@@ -1,0 +1,8 @@
+大小 1km x 1km
+时间单位： 5s
+距离单位： 1m
+感染方式：碰撞传染
+
+校准参考：
+household secondary attack = 0.68
+R0 = 10

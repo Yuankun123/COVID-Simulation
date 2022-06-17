@@ -1,8 +1,7 @@
 import random
 import time
 import numpy as np
-from Tool import unit_vector
-from numpy.linalg import norm
+from Tool import unit_vector, norm
 NORMAL = 'normal'
 INFECTED = 'infected'
 TIME_CONSTANT = 360  # 1 hours contains 360 time units
@@ -186,7 +185,7 @@ class RBuilding(Building):
 class TBuilding(Building):
     def default_attractiveness(self):
         if 11 * TIME_CONSTANT <= self.v_city.current_time < 13 * TIME_CONSTANT:
-            return 0
+            return 1
         else:
             return 10
 
@@ -334,7 +333,7 @@ class VirtualCity:
             region.freeze()
 
     def progress(self):
-        if self.current_time < 6 * TIME_CONSTANT or self.current_time >= 18 * TIME_CONSTANT:
+        if self.current_time < 6 * TIME_CONSTANT or self.current_time >= 20 * TIME_CONSTANT:
             self.current_time = 6 * TIME_CONSTANT
             self.current_day += 1
         else:

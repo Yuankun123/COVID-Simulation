@@ -100,7 +100,7 @@ if display == 'Y':
         sim.display()
         plt.pause(0.00001)
         if sim.current_time % TIME_CONSTANT == 0:
-            print(sim.current_time // TIME_CONSTANT)
+            print(sim.current_day, sim.current_time // TIME_CONSTANT)
 else:
     while sim.current_day < 30:
         sim.progress()
@@ -108,5 +108,5 @@ else:
         sim.move()
         sim.update_infected()
         if sim.current_time % TIME_CONSTANT == 0:
-            print(sim.current_time // TIME_CONSTANT)
+            print(sim.current_day, sim.current_time // TIME_CONSTANT)
 stop = True

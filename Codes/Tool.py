@@ -1,5 +1,7 @@
 import copy
 import random
+import time
+
 import numpy as np
 from numpy.linalg import norm
 
@@ -16,7 +18,14 @@ def rand_rearrange(input_list: list):
     :param input_list: 输入列表
     :return: None
     """
-    remaining_index = list(range(len(input_list)))
-    copy_list = copy.copy(input_list)
-    for i in range(len(copy_list)):
-        input_list[i] = copy_list[remaining_index.pop(random.randint(0, len(remaining_index) - 1))]
+    res = []
+    input_list = copy.copy(input_list)
+    while len(input_list) > 0:
+        random.seed(time.perf_counter())
+        res.append(input_list.pop(random.randint(0, len(input_list) - 1)))
+    return res
+
+
+if __name__ == '__main__':
+    class _Test:
+        print(rand_rearrange([1, 2, 3, 4]))

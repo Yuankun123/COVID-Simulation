@@ -13,8 +13,8 @@ def transport_activity():
 
 
 class Simulation(VirtualCity):
-    def __init__(self, size, population):
-        super().__init__(size, population, transport_activity)
+    def __init__(self, size, population, initial_infected):
+        super().__init__(size, population, initial_infected, transport_activity)
         if display == 'Y':
             plt.ion()
             plt.figure(figsize=(10, 10), dpi=80)
@@ -36,15 +36,20 @@ class Simulation(VirtualCity):
                                        linewidth=1, color='red', fillstyle='none',
                                        marker='x', markersize=10))
 
-        plt.scatter(x=[indiv.pos[0] for indiv in self.individuals], y=[indiv.pos[1] for indiv in self.individuals],
+        plt.scatter(x=[indiv.pos[0] for indiv in self.individuals if indiv.infected_state == 'normal'],
+                    y=[indiv.pos[1] for indiv in self.individuals if indiv.infected_state == 'normal'],
                     marker='o')
+
+        plt.scatter(x=[indiv.pos[0] for indiv in self.individuals if indiv.infected_state == 'infected'],
+                    y=[indiv.pos[1] for indiv in self.individuals if indiv.infected_state == 'infected'],
+                    marker='o', color='red')
 
     def protocols_info(self):
         for protocol in sum([road.protocols for road in self.roads], []):
             print(protocol.connect_dict)
 
 
-sim = Simulation(size=1000, population=300)
+sim = Simulation(size=1000, population=300, initial_infected=20)
 R1 = sim.add_region('R1', (250, 250), 101, 'R')
 R2 = sim.add_region('R2', (250, 450), 101, 'R')
 R3 = sim.add_region('R3', (250, 650), 101, 'R')
@@ -77,12 +82,11 @@ stop = False
 
 def random_refresh():
     while not stop:
-        time.sleep(0.00001)
+        time.sleep(0.01)
         random.seed(time.perf_counter())
         sim.random_nums.append(random.gauss(0, 3))
         sim.random_nums.pop(0)
-        rand_rearrange(sim.random_nums)
-
+        sim.random_nums = rand_rearrange(sim.random_nums)
 
 
 rs = threading.Thread(target=random_refresh)
@@ -92,6 +96,7 @@ if display == 'Y':
         sim.progress()
         sim.update_attractiveness()
         sim.move()
+        sim.update_infected()
         sim.display()
         plt.pause(0.00001)
         if sim.current_time % TIME_CONSTANT == 0:
@@ -101,6 +106,7 @@ else:
         sim.progress()
         sim.update_attractiveness()
         sim.move()
+        sim.update_infected()
         if sim.current_time % TIME_CONSTANT == 0:
             print(sim.current_time // TIME_CONSTANT)
 stop = True

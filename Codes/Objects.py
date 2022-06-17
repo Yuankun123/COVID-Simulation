@@ -3,6 +3,8 @@ import time
 import numpy as np
 from Tool import unit_vector
 from numpy.linalg import norm
+NORMAL = 'normal'
+INFECTED = 'infected'
 TIME_CONSTANT = 360  # 1 hours contains 360 time units
 
 
@@ -51,7 +53,9 @@ class Region:
         self.v_city = v_city
         self.add_self = add_self
         self.protocols: list[Protocol] = []
-        self.accessible: dict['Region', int] = {}
+        self.accessible: dict[Region, int] = {}
+        self.normal_individuals: list[Individual] = []
+        self.infected_individuals: list[Individual] = []
 
     def accessible_from(self, origin: Protocol = None, root_track=None) -> dict['Region', int]:
         # print(f'Getting Accessible Regions From {origin} in {self}')
@@ -75,15 +79,13 @@ class Region:
         self.accessible = self.accessible_from()
 
     def find_protocol(self, target: 'Region') -> Protocol:
+        assert target != self
         candidates = []
         for protocol in self.protocols:
             if target in protocol.connect_dict[self].keys():
                 candidates.append((protocol, protocol.connect_dict[self][target]))
         candidates.sort(key=lambda x: x[1])
         return candidates[0][0]
-
-    def find_next_region(self, target: 'Region') -> 'Region':
-        return self.find_protocol(target).other_side(self)
 
     def __repr__(self):
         return self.na
@@ -97,6 +99,28 @@ class Region:
 
     def __contains__(self, pos: np.ndarray):
         pass
+
+    def update_infected(self):
+        for individual1 in self.infected_individuals:
+            for individual2 in self.normal_individuals:
+                if norm(individual1.pos - individual2.pos) < Virus.infect_distance:
+                    random.seed(time.perf_counter())
+                    individual2.infected_state = random.choices([INFECTED, NORMAL], cum_weights=[Virus.risk, 1])[0]
+                    if individual2.infected_state == INFECTED:
+                        self.normal_individuals.remove(individual2)
+                        self.infected_individuals.append(individual2)
+
+    def add_individual(self, indiv: 'Individual'):
+        if indiv.infected_state == NORMAL:
+            self.normal_individuals.append(indiv)
+        else:
+            self.infected_individuals.append(indiv)
+
+    def remove_individual(self, indiv: 'Individual'):
+        if indiv.infected_state == NORMAL:
+            self.normal_individuals.remove(indiv)
+        else:
+            self.infected_individuals.remove(indiv)
 
 
 class Building(Region):
@@ -119,6 +143,7 @@ class Building(Region):
     def rand_location(self) -> np.ndarray:
         y_sigma = x_sigma = (self.size - 1) / 6
         x_mu, y_mu = self.cntr
+        random.seed(time.perf_counter())
         res = (random.gauss(x_mu, x_sigma), random.gauss(y_mu, y_sigma))
         while res not in self:
             res = (random.gauss(x_mu, x_sigma), random.gauss(y_mu, y_sigma))
@@ -174,12 +199,21 @@ class Individual:
     step_length = 10
     drift_sigma = 3
 
-    def __init__(self, home: RBuilding, v_city: 'VirtualCity'):
+    def __init__(self, home: RBuilding, v_city: 'VirtualCity', infected=False):
+        if infected:
+            self.infected_state = INFECTED
+        else:
+            self.infected_state = NORMAL
+
         self.index = Individual.index
         Individual.index += 1
+
         self.home = home
         self.pos = home.rand_location()
         self.imagined_current_region: Region = home  # the quasi-current-location that instructs the individual to move
+        self.current_region = home
+        home.add_individual(self)
+
         self.v_city = v_city
         self.target = None
         self.target_protocol = None  # temperate protocol
@@ -188,38 +222,54 @@ class Individual:
         # noinspection PyTypeChecker
         candidates: list[Building] = [building for building in self.v_city.non_residential_buildings] + [self.home]
         weights = [candidate.attractiveness for candidate in candidates]
-        return random.choices(candidates, weights=weights)[0]
+        while (res := random.choices(candidates, weights=weights)[0]) == self.current_region:
+            pass
+        return res
 
     def drift(self):
-        if self.target is None:
-            self.pos += \
-                (self.imagined_current_region.cntr - self.pos) ** 3 / (self.imagined_current_region.size / 2) ** 3
         self.pos += np.array([self.v_city.random_nums[self.index], self.v_city.random_nums[-self.index]])
+        ''' if isinstance(self.current_region, Building):
+            while self.pos not in self.current_region and self.pos not in self.imagined_current_region:
+                # noinspection PyUnresolvedReferences
+                self.pos += (self.current_region.cntr - self.pos) / 10'''
+        if self.target is None:
+            self.pos += (self.current_region.cntr - self.pos) / 50
+            while self.pos not in self.current_region:
+                self.pos += (self.current_region.cntr - self.pos) / 10
 
     def move(self):
         if self.target is None:
             self.target = self.generate_target()
-            self.imagined_current_region = self.imagined_current_region.find_next_region(self.target)
-            self.target_protocol = self.imagined_current_region.find_protocol(self.target)
-            # print('New target:', self.target)
-            # print('Current target:', self.target_protocol.pos)
-        if self.pos in self.target:
-            self.imagined_current_region = self.target
-            self.target = None
-            return 'arrived'
+            self.target_protocol = self.current_region.find_protocol(self.target)
+            self.imagined_current_region = self.target_protocol.other_side(self.current_region)
 
         # move
         if self.pos not in self.imagined_current_region:
             direction = unit_vector(self.target_protocol.pos - self.pos)
             self.pos += np.round_(direction * Individual.step_length, decimals=0)
-        else:
-            self.imagined_current_region = self.target_protocol.other_side(self.imagined_current_region)
-            self.target_protocol = self.imagined_current_region.find_protocol(self.target)
+
+        if self.pos in self.target:
+            assert self.imagined_current_region == self.target, (self.current_region, self.imagined_current_region,
+                                                                 self.target_protocol, self.target)
+            self.current_region.remove_individual(self)
+            self.imagined_current_region.add_individual(self)
+            self.current_region = self.imagined_current_region
+            self.target = None
+            return 'arrived'
+
+        if self.pos in self.imagined_current_region:
+            self.current_region.remove_individual(self)
+            self.imagined_current_region.add_individual(self)
+            self.current_region = self.imagined_current_region
+
+            self.target_protocol = self.current_region.find_protocol(self.target)
+            self.imagined_current_region = self.target_protocol.other_side(self.current_region)
             # print('Current target:', self.target_protocol.pos)
 
 
 class VirtualCity:
-    def __init__(self, size, population, transport_activity_func):
+    def __init__(self, size, population, initial_infected, transport_activity_func):
+        self.initial_infected = initial_infected
         self.population = population
         self.size = size
         self.current_time = 0
@@ -262,8 +312,10 @@ class VirtualCity:
         return res
 
     def add_crowd(self):
-        for _ in range(self.population):
+        for _ in range(self.population - self.initial_infected):
             self.individuals.append(Individual(random.choice(self.residential_buildings), self))
+        for _ in range(self.initial_infected):
+            self.individuals.append(Individual(random.choice(self.residential_buildings), self, True))
 
     def move(self):
         for individual in self.individuals:
@@ -292,17 +344,24 @@ class VirtualCity:
         for building in self.buildings:
             building.update_attractiveness()
 
+    def update_infected(self):
+        # noinspection PyTypeChecker
+        for region in self.buildings + self.roads:
+            region.update_infected()
+
 
 class Virus:
+    infect_distance = 1.8
+    risk = 0.01
     pass
 
 
 if __name__ == '__main__':
     class _Test:
-        A = Region('A')
-        B = Region('B')
-        C = Region('C')
-        D = Region('D')
+        A = Region('A', None)
+        B = Region('B', None)
+        C = Region('C', None)
+        D = Region('D', None)
         Region.connect(A, B, np.array((0, 0)))
         Region.connect(B, C, np.array((0, 0)))
         Region.connect(C, D, np.array((0, 0)))

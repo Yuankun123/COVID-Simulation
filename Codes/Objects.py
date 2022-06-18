@@ -99,12 +99,12 @@ class Region:
     def __contains__(self, pos: np.ndarray):
         pass
 
-    def update_infected(self):
+    def update_infected(self, virus: 'Virus'):
         for individual1 in self.infected_individuals:
             for individual2 in self.normal_individuals:
-                if norm(individual1.pos - individual2.pos) < Virus.infect_distance:
+                if norm(individual1.pos - individual2.pos) < virus.infection_radius:
                     random.seed(time.perf_counter())
-                    individual2.infected_state = random.choices([INFECTED, NORMAL], cum_weights=[Virus.risk, 1])[0]
+                    individual2.infected_state = random.choices([INFECTED, NORMAL], cum_weights=[virus.risk, 1])[0]
                     if individual2.infected_state == INFECTED:
                         self.normal_individuals.remove(individual2)
                         self.infected_individuals.append(individual2)
@@ -231,8 +231,8 @@ class Individual:
                 self.pos += (self.current_region.cntr - self.pos) / 10'''
         if self.target is None:
             self.pos += (self.current_region.cntr - self.pos) / (self.current_region.size / 2)
-            while self.pos not in self.current_region:
-                self.pos += (self.current_region.cntr - self.pos) / (self.current_region.size / 10)
+            '''while self.pos not in self.current_region:
+                self.pos += (self.current_region.cntr - self.pos) / (self.current_region.size / 10)'''
 
     def move(self):
         if self.target is None:
@@ -300,15 +300,6 @@ class VirtualCity:
         for region in self.buildings + self.roads:
             region.finish_construction()
 
-    def update_attractiveness(self, current_time):
-        for building in self.buildings:
-            building.update_attractiveness(current_time)
-
-    def update_infected(self):
-        # noinspection PyTypeChecker
-        for region in self.buildings + self.roads:
-            region.update_infected()
-
 
 class Crowd:
     def __init__(self, population: int, initial_infected: int, step_length, drift_sigma, transport_activity):
@@ -348,7 +339,13 @@ class Crowd:
                 self.transporting_individuals.pop(i)
 
 
-class Simulation(VirtualCity, Crowd):
+class Virus:
+    def __init__(self, infection_radius, risk):
+        self.infection_radius = infection_radius
+        self.risk = risk
+
+
+class Simulation(VirtualCity, Crowd, Virus):
     def __init__(self,
                  time_period: tuple,     # period of time in a day that we simulate (in unit)
                  size: int,              # size of the virtual city
@@ -357,12 +354,15 @@ class Simulation(VirtualCity, Crowd):
                  step_length: float,     # distance traveled per time unit
                  drift_sigma: float,     # stdev for drifting
                  transport_activity,     # percent of population transporting among regions in a given time unit (func)
+                 infection_radius: float,
+                 risk: float,
                  ):
         self.current_time = 0
         self.current_day = 0
         self.time_period = time_period
         VirtualCity.__init__(self, size)
         Crowd.__init__(self, population, initial_infected, step_length, drift_sigma, transport_activity)
+        Virus.__init__(self, infection_radius, risk)
 
     def finish_construction(self):
         VirtualCity.finish_construction(self)
@@ -375,15 +375,15 @@ class Simulation(VirtualCity, Crowd):
         else:
             self.current_time += 1
 
-        self.update_attractiveness(self.current_time)
+        # update attractiveness
+        for building in self.buildings:
+            building.update_attractiveness(self.current_time)
+        # move
         self.move_all(self.current_time)
-        self.update_infected()
-
-
-class Virus:
-    infect_distance = 1.8
-    risk = 0.01
-    pass
+        # update infection state
+        # noinspection PyTypeChecker
+        for region in self.buildings + self.roads:
+            region.update_infected(self)
 
 
 if __name__ == '__main__':

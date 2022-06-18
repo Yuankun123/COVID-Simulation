@@ -21,9 +21,12 @@ class DSimulation(Simulation):
                  step_length: float,     # distance traveled per time unit
                  drift_sigma: float,     # stdev for drifting
                  transport_activity,     # percent of population transporting among regions in a given time unit (func)
+                 infection_radius: float,
+                 risk: float
                  ):
 
-        super().__init__(time_period, size, population, initial_infected, step_length, drift_sigma, transport_activity)
+        super().__init__(time_period, size, population, initial_infected, step_length, drift_sigma, transport_activity,
+                         infection_radius, risk)
         if display == 'Y':
             plt.ion()
             plt.figure(figsize=(10, 10), dpi=80)
@@ -58,8 +61,9 @@ class DSimulation(Simulation):
             print(protocol.connect_dict)
 
 
-sim = DSimulation(time_period=(6 * TIME_CONSTANT, 20 * TIME_CONSTANT), size=1000, population=300, initial_infected=20,
-                  step_length=10, drift_sigma=3, transport_activity=test_transport_activity)
+sim = DSimulation(time_period=(6 * TIME_CONSTANT, 20 * TIME_CONSTANT), size=1000, population=1000, initial_infected=20,
+                  step_length=10, drift_sigma=3, transport_activity=test_transport_activity, infection_radius=1.8,
+                  risk=0.01)
 R1 = sim.add_region('R1', (250, 250), 101, 'R')
 R2 = sim.add_region('R2', (250, 450), 101, 'R')
 R3 = sim.add_region('R3', (250, 650), 101, 'R')

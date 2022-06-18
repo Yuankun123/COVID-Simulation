@@ -48,20 +48,25 @@ class DSimulation(Simulation):
                                        linewidth=1, color='red', fillstyle='none',
                                        marker='x', markersize=10))
 
-        plt.scatter(x=[indiv.pos[0] for indiv in self.individuals if indiv.infected_state == 'normal'],
-                    y=[indiv.pos[1] for indiv in self.individuals if indiv.infected_state == 'normal'],
+        plt.scatter(x=[indiv.pos[0] for indiv in self.normal_individuals],
+                    y=[indiv.pos[1] for indiv in self.normal_individuals],
                     marker='o')
 
-        plt.scatter(x=[indiv.pos[0] for indiv in self.individuals if indiv.infected_state == 'infected'],
-                    y=[indiv.pos[1] for indiv in self.individuals if indiv.infected_state == 'infected'],
+        plt.scatter(x=[indiv.pos[0] for indiv in self.infected_individuals],
+                    y=[indiv.pos[1] for indiv in self.infected_individuals],
                     marker='o', color='red')
 
     def protocols_info(self):
         for protocol in sum([road.protocols for road in self.roads], []):
             print(protocol.connect_dict)
 
+    def progress_info(self):
+        if self.current_time % TIME_CONSTANT == 0:
+            print(f'\nDay{self.current_day} {self.current_time // TIME_CONSTANT}:00')
+        print(f'\r{len(self.infected_individuals)}', end='')
 
-sim = DSimulation(time_period=(6 * TIME_CONSTANT, 20 * TIME_CONSTANT), size=1000, population=1000, initial_infected=20,
+
+sim = DSimulation(time_period=(6 * TIME_CONSTANT, 20 * TIME_CONSTANT), size=1000, population=300, initial_infected=20,
                   step_length=10, drift_sigma=3, transport_activity=test_transport_activity, infection_radius=1.8,
                   risk=0.01)
 R1 = sim.add_region('R1', (250, 250), 101, 'R')
@@ -95,7 +100,7 @@ stop = False
 
 def random_refresh():
     while not stop:
-        time.sleep(0.01)
+        time.sleep(0.000001)
         random.seed(time.perf_counter())
         sim.random_nums.append(random.gauss(0, 3))
         sim.random_nums.pop(0)
@@ -107,13 +112,11 @@ rs.start()
 if display == 'Y':
     while sim.current_day < 30:
         sim.progress()
+        sim.progress_info()
         sim.display()
         plt.pause(0.00001)
-        if sim.current_time % TIME_CONSTANT == 0:
-            print(sim.current_day, sim.current_time // TIME_CONSTANT)
 else:
     while sim.current_day < 30:
         sim.progress()
-        if sim.current_time % TIME_CONSTANT == 0:
-            print(sim.current_day, sim.current_time // TIME_CONSTANT)
+        sim.progress_info()
 stop = True

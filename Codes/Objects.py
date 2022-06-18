@@ -106,6 +106,8 @@ class Region:
                     random.seed(time.perf_counter())
                     individual2.infected_state = random.choices([INFECTED, NORMAL], cum_weights=[virus.risk, 1])[0]
                     if individual2.infected_state == INFECTED:
+                        individual2.crowd.normal_individuals.remove(individual2)
+                        individual2.crowd.infected_individuals.append(individual2)
                         self.normal_individuals.remove(individual2)
                         self.infected_individuals.append(individual2)
 
@@ -153,8 +155,8 @@ class Building(Region):
 
 
 class StraightRoad(Region):
-    def __init__(self, width, vcity: 'VirtualCity'):
-        super().__init__('Road', vcity, add_self=False)
+    def __init__(self, width, vcity: 'VirtualCity', r1_name, r2_name):
+        super().__init__(f'Road between {r1_name} and {r2_name}', vcity, add_self=False)
         self.width = width
 
     def distance_from_axis(self, pos):
@@ -236,6 +238,8 @@ class Individual:
 
     def move(self):
         if self.target is None:
+            while self.pos not in self.current_region:
+                self.pos += (self.current_region.cntr - self.pos) / (self.current_region.size / 10)
             self.target = self.generate_target()
             self.target_protocol = self.current_region.find_protocol(self.target)
             self.imagined_current_region = self.target_protocol.other_side(self.current_region)
@@ -246,8 +250,11 @@ class Individual:
             self.pos += np.round_(direction * self.crowd.step_length, decimals=0)
 
         if self.pos in self.target:
-            assert self.imagined_current_region == self.target, (self.current_region, self.imagined_current_region,
-                                                                 self.target_protocol, self.target)
+            assert self.imagined_current_region == self.target, (f'Current:{self.current_region}',
+                                                                 f'Imagined:{self.imagined_current_region}',
+                                                                 f'Target:{self.target}',
+                                                                 f'Target protocol: {self.target_protocol}',
+                                                                 f'Pos:{self.pos}')
             self.current_region.remove_individual(self)
             self.imagined_current_region.add_individual(self)
             self.current_region = self.imagined_current_region
@@ -276,12 +283,17 @@ class VirtualCity:
         # noinspection PyTypeChecker
         return self.non_residential_buildings + self.residential_buildings
 
+    @property
+    def regions(self) -> list[Region]:
+        # noinspection PyTypeChecker
+        return self.buildings + self.roads
+
     def build_road(self, port_dict: dict[Building, tuple[int, int]], width):
         for region, pos in port_dict.items():
             assert region in self.buildings
             assert 0 <= pos[0] - region.loc[0] < region.size and 0 <= pos[1] - region.loc[1] < region.size, region
 
-        new_road = StraightRoad(width, self)
+        new_road = StraightRoad(width, self, list(port_dict.keys())[0].na, list(port_dict.keys())[1].na)
         self.roads.append(new_road)
 
         for region, pos in port_dict.items():
@@ -296,8 +308,7 @@ class VirtualCity:
         return res
 
     def finish_construction(self):
-        # noinspection PyTypeChecker
-        for region in self.buildings + self.roads:
+        for region in self.regions:
             region.finish_construction()
 
 
@@ -311,7 +322,8 @@ class Crowd:
 
         self.residential_buildings = []
         self.non_residential_buildings = []
-        self.individuals: list[Individual] = []
+        self.normal_individuals: list[Individual] = []
+        self.infected_individuals: list[Individual] = []
         self.transporting_individuals: list[Individual] = []
 
         self.random_nums = []
@@ -319,13 +331,17 @@ class Crowd:
             random.seed(time.perf_counter())
             self.random_nums.append(random.gauss(0, 3))
 
+    @property
+    def individuals(self):
+        return self.normal_individuals + self.infected_individuals
+
     def initiate_individuals(self, residential_buildings, non_residential_buildings):
         self.residential_buildings = residential_buildings
         self.non_residential_buildings = non_residential_buildings
         for _ in range(self.population - self.initial_infected):
-            self.individuals.append(Individual(random.choice(self.residential_buildings), self))
+            self.normal_individuals.append(Individual(random.choice(self.residential_buildings), self))
         for _ in range(self.initial_infected):
-            self.individuals.append(Individual(random.choice(self.residential_buildings), self, True))
+            self.infected_individuals.append(Individual(random.choice(self.residential_buildings), self, True))
 
     def move_all(self, current_time):
         for individual in self.individuals:
@@ -381,8 +397,7 @@ class Simulation(VirtualCity, Crowd, Virus):
         # move
         self.move_all(self.current_time)
         # update infection state
-        # noinspection PyTypeChecker
-        for region in self.buildings + self.roads:
+        for region in self.regions:
             region.update_infected(self)
 
 

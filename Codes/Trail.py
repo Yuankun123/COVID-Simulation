@@ -1,6 +1,7 @@
-import numpy as np
+def generator(a):
+    for i in range(a):
+        yield i
 
-a = np.array([1, 7])
 
-print(8 in range(*a*2))
-
+for k in generator(5):
+    print(k)

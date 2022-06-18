@@ -1,4 +1,4 @@
-from Objects import VirtualCity, TIME_CONSTANT
+from Objects import Simulation, TIME_CONSTANT
 from Tool import rand_rearrange
 import matplotlib.pyplot as plt
 import random
@@ -8,13 +8,22 @@ import time
 display = input('Display?, Y or N')
 
 
-def transport_activity():
+def test_transport_activity(current_time):
     return 0.1
 
 
-class Simulation(VirtualCity):
-    def __init__(self, size, population, initial_infected):
-        super().__init__(size, population, initial_infected, transport_activity)
+class DSimulation(Simulation):
+    def __init__(self,
+                 time_period: tuple,     # period of time in a day that we simulate (in unit)
+                 size: int,              # size of the virtual city
+                 population: int,        # population of this simulation
+                 initial_infected: int,  # number of initially infected individuals
+                 step_length: float,     # distance traveled per time unit
+                 drift_sigma: float,     # stdev for drifting
+                 transport_activity,     # percent of population transporting among regions in a given time unit (func)
+                 ):
+
+        super().__init__(time_period, size, population, initial_infected, step_length, drift_sigma, transport_activity)
         if display == 'Y':
             plt.ion()
             plt.figure(figsize=(10, 10), dpi=80)
@@ -49,7 +58,8 @@ class Simulation(VirtualCity):
             print(protocol.connect_dict)
 
 
-sim = Simulation(size=1000, population=300, initial_infected=20)
+sim = DSimulation(time_period=(6 * TIME_CONSTANT, 20 * TIME_CONSTANT), size=1000, population=300, initial_infected=20,
+                  step_length=10, drift_sigma=3, transport_activity=test_transport_activity)
 R1 = sim.add_region('R1', (250, 250), 101, 'R')
 R2 = sim.add_region('R2', (250, 450), 101, 'R')
 R3 = sim.add_region('R3', (250, 650), 101, 'R')
@@ -73,8 +83,7 @@ sim.build_road({T3: (700, 350), T4: (700, 450)}, 5)
 sim.build_road({R2: (300, 550), R3: (300, 650)}, 5)
 sim.build_road({T1: (500, 550), T2: (500, 650)}, 5)
 sim.build_road({T4: (700, 550), T5: (700, 650)}, 5)
-sim.freeze()
-sim.add_crowd()
+sim.finish_construction()
 
 # parallel random number generator
 stop = False
@@ -94,9 +103,6 @@ rs.start()
 if display == 'Y':
     while sim.current_day < 30:
         sim.progress()
-        sim.update_attractiveness()
-        sim.move()
-        sim.update_infected()
         sim.display()
         plt.pause(0.00001)
         if sim.current_time % TIME_CONSTANT == 0:
@@ -104,9 +110,6 @@ if display == 'Y':
 else:
     while sim.current_day < 30:
         sim.progress()
-        sim.update_attractiveness()
-        sim.move()
-        sim.update_infected()
         if sim.current_time % TIME_CONSTANT == 0:
             print(sim.current_day, sim.current_time // TIME_CONSTANT)
 stop = True

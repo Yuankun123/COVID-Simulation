@@ -35,7 +35,7 @@ class Protocol:
     def __repr__(self):
         return f'Protocol between {repr(self.region1)} and {repr(self.region2)}'
 
-    def freeze(self):
+    def finish_construction(self):
         self.connect_dict[self.region1] = self.accessible_from(self.region1)
         self.connect_dict[self.region2] = self.accessible_from(self.region2)
 
@@ -47,9 +47,9 @@ class Region:
         region1.protocols.append(new_protocol)
         region2.protocols.append(new_protocol)
 
-    def __init__(self, name: str, v_city: 'VirtualCity', add_self=True):
+    def __init__(self, name: str, vcity: 'VirtualCity', add_self=True):
         self.na = name
-        self.v_city = v_city
+        self.vcity = vcity
         self.add_self = add_self
         self.protocols: list[Protocol] = []
         self.accessible: dict[Region, int] = {}
@@ -72,9 +72,9 @@ class Region:
                         res[region] = distance
         return res
 
-    def freeze(self):
+    def finish_construction(self):
         for protocol in self.protocols:
-            protocol.freeze()
+            protocol.finish_construction()
         self.accessible = self.accessible_from()
 
     def find_protocol(self, target: 'Region') -> Protocol:
@@ -124,20 +124,20 @@ class Region:
 
 class Building(Region):
     @staticmethod
-    def default_attractiveness():
+    def default_attractiveness(current_time):
         return 0
 
-    def __init__(self, name, size, loc: np.ndarray, r_type, v_city: 'VirtualCity', attract_func=None):
-        super().__init__(name, v_city)
+    def __init__(self, name, size, loc: np.ndarray, r_type, vcity: 'VirtualCity', attract_func=None):
+        super().__init__(name, vcity)
         self.loc = loc
         self.size = size
         self.r_type = r_type
         self.attract_func = attract_func if attract_func else self.default_attractiveness
-        self.attractiveness = self.attract_func()
+        self.attractiveness = self.attract_func(0)
         self.cntr = self.loc + np.array([(self.size - 1) / 2] * 2)
 
-    def update_attractiveness(self):
-        self.attractiveness = self.attract_func()
+    def update_attractiveness(self, current_time):
+        self.attractiveness = self.attract_func(current_time)
 
     def rand_location(self) -> np.ndarray:
         y_sigma = x_sigma = (self.size - 1) / 6
@@ -153,8 +153,8 @@ class Building(Region):
 
 
 class StraightRoad(Region):
-    def __init__(self, width, v_city: 'VirtualCity'):
-        super().__init__('Road', v_city, add_self=False)
+    def __init__(self, width, vcity: 'VirtualCity'):
+        super().__init__('Road', vcity, add_self=False)
         self.width = width
 
     def distance_from_axis(self, pos):
@@ -175,30 +175,28 @@ class StraightRoad(Region):
 
 
 class RBuilding(Building):
-    def default_attractiveness(self):
+    def default_attractiveness(self, current_time):
         return 1
 
-    def __init__(self, name, size, loc: np.ndarray, v_city, attract_func=None):
-        super().__init__(name, size, loc, 'R', v_city, attract_func)
+    def __init__(self, name, size, loc: np.ndarray, vcity, attract_func=None):
+        super().__init__(name, size, loc, 'R', vcity, attract_func)
 
 
 class TBuilding(Building):
-    def default_attractiveness(self):
-        if 11 * TIME_CONSTANT <= self.v_city.current_time < 13 * TIME_CONSTANT:
+    def default_attractiveness(self, current_time):
+        if 11 * TIME_CONSTANT <= current_time < 13 * TIME_CONSTANT:
             return 1
         else:
             return 10
 
-    def __init__(self, name, size, loc: np.ndarray, v_city, attract_func=None):
-        super().__init__(name, size, loc, 'T', v_city, attract_func)
+    def __init__(self, name, size, loc: np.ndarray, vcity, attract_func=None):
+        super().__init__(name, size, loc, 'T', vcity, attract_func)
 
 
 class Individual:
     index = 0
-    step_length = 10
-    drift_sigma = 3
 
-    def __init__(self, home: RBuilding, v_city: 'VirtualCity', infected=False):
+    def __init__(self, home: RBuilding, crowd: 'Crowd', infected=False):
         if infected:
             self.infected_state = INFECTED
         else:
@@ -213,28 +211,28 @@ class Individual:
         self.current_region = home
         home.add_individual(self)
 
-        self.v_city = v_city
+        self.crowd = crowd
         self.target = None
         self.target_protocol = None  # temperate protocol
 
     def generate_target(self):
         # noinspection PyTypeChecker
-        candidates: list[Building] = [building for building in self.v_city.non_residential_buildings] + [self.home]
+        candidates: list[Building] = [building for building in self.crowd.non_residential_buildings] + [self.home]
         weights = [candidate.attractiveness for candidate in candidates]
         while (res := random.choices(candidates, weights=weights)[0]) == self.current_region:
             pass
         return res
 
     def drift(self):
-        self.pos += np.array([self.v_city.random_nums[self.index], self.v_city.random_nums[-self.index]])
+        self.pos += np.array([self.crowd.random_nums[self.index], self.crowd.random_nums[-self.index]])
         ''' if isinstance(self.current_region, Building):
             while self.pos not in self.current_region and self.pos not in self.imagined_current_region:
                 # noinspection PyUnresolvedReferences
                 self.pos += (self.current_region.cntr - self.pos) / 10'''
         if self.target is None:
-            self.pos += (self.current_region.cntr - self.pos) / 50
+            self.pos += (self.current_region.cntr - self.pos) / (self.current_region.size / 2)
             while self.pos not in self.current_region:
-                self.pos += (self.current_region.cntr - self.pos) / 10
+                self.pos += (self.current_region.cntr - self.pos) / (self.current_region.size / 10)
 
     def move(self):
         if self.target is None:
@@ -245,7 +243,7 @@ class Individual:
         # move
         if self.pos not in self.imagined_current_region:
             direction = unit_vector(self.target_protocol.pos - self.pos)
-            self.pos += np.round_(direction * Individual.step_length, decimals=0)
+            self.pos += np.round_(direction * self.crowd.step_length, decimals=0)
 
         if self.pos in self.target:
             assert self.imagined_current_region == self.target, (self.current_region, self.imagined_current_region,
@@ -267,24 +265,11 @@ class Individual:
 
 
 class VirtualCity:
-    def __init__(self, size, population, initial_infected, transport_activity_func):
-        self.initial_infected = initial_infected
-        self.population = population
+    def __init__(self, size):
         self.size = size
-        self.current_time = 0
-        self.current_day = 0
-        self.transport_activity_func = transport_activity_func
-
-        self.random_nums = []
-        for _ in range(2 * population):
-            random.seed(time.perf_counter())
-            self.random_nums.append(random.gauss(0, 3))
-
         self.residential_buildings: list[RBuilding] = []
         self.non_residential_buildings: list[TBuilding] = []
         self.roads: list[StraightRoad] = []
-        self.individuals: list[Individual] = []
-        self.transporting_individuals: list[Individual] = []
 
     @property
     def buildings(self) -> list[Building]:
@@ -310,16 +295,51 @@ class VirtualCity:
             self.non_residential_buildings.append(res := TBuilding(name, size, np.array(loc), self))
         return res
 
-    def add_crowd(self):
+    def finish_construction(self):
+        # noinspection PyTypeChecker
+        for region in self.buildings + self.roads:
+            region.finish_construction()
+
+    def update_attractiveness(self, current_time):
+        for building in self.buildings:
+            building.update_attractiveness(current_time)
+
+    def update_infected(self):
+        # noinspection PyTypeChecker
+        for region in self.buildings + self.roads:
+            region.update_infected()
+
+
+class Crowd:
+    def __init__(self, population: int, initial_infected: int, step_length, drift_sigma, transport_activity):
+        self.initial_infected = initial_infected
+        self.population = population
+        self.step_length = step_length
+        self.drift_sigma = drift_sigma
+        self.transport_activity = transport_activity
+
+        self.residential_buildings = []
+        self.non_residential_buildings = []
+        self.individuals: list[Individual] = []
+        self.transporting_individuals: list[Individual] = []
+
+        self.random_nums = []
+        for _ in range(2 * population):
+            random.seed(time.perf_counter())
+            self.random_nums.append(random.gauss(0, 3))
+
+    def initiate_individuals(self, residential_buildings, non_residential_buildings):
+        self.residential_buildings = residential_buildings
+        self.non_residential_buildings = non_residential_buildings
         for _ in range(self.population - self.initial_infected):
             self.individuals.append(Individual(random.choice(self.residential_buildings), self))
         for _ in range(self.initial_infected):
             self.individuals.append(Individual(random.choice(self.residential_buildings), self, True))
 
-    def move(self):
+    def move_all(self, current_time):
         for individual in self.individuals:
             individual.drift()
-        transport_num = int(self.transport_activity_func() * self.population)
+        transport_num = int(self.transport_activity(current_time) * self.population)
         self.transporting_individuals.extend(
             random.choices(self.individuals, k=transport_num - len(self.transporting_individuals))
         )
@@ -327,26 +347,37 @@ class VirtualCity:
             if individual.move() == 'arrived':
                 self.transporting_individuals.pop(i)
 
-    def freeze(self):
-        # noinspection PyTypeChecker
-        for region in self.buildings + self.roads:
-            region.freeze()
+
+class Simulation(VirtualCity, Crowd):
+    def __init__(self,
+                 time_period: tuple,     # period of time in a day that we simulate (in unit)
+                 size: int,              # size of the virtual city
+                 population: int,        # population of this simulation
+                 initial_infected: int,  # number of initially infected individuals
+                 step_length: float,     # distance traveled per time unit
+                 drift_sigma: float,     # stdev for drifting
+                 transport_activity,     # percent of population transporting among regions in a given time unit (func)
+                 ):
+        self.current_time = 0
+        self.current_day = 0
+        self.time_period = time_period
+        VirtualCity.__init__(self, size)
+        Crowd.__init__(self, population, initial_infected, step_length, drift_sigma, transport_activity)
+
+    def finish_construction(self):
+        VirtualCity.finish_construction(self)
+        self.initiate_individuals(self.residential_buildings, self.non_residential_buildings)
 
     def progress(self):
-        if self.current_time < 6 * TIME_CONSTANT or self.current_time >= 20 * TIME_CONSTANT:
-            self.current_time = 6 * TIME_CONSTANT
+        if self.current_time not in range(*self.time_period):
+            self.current_time = self.time_period[0]
             self.current_day += 1
         else:
             self.current_time += 1
 
-    def update_attractiveness(self):
-        for building in self.buildings:
-            building.update_attractiveness()
-
-    def update_infected(self):
-        # noinspection PyTypeChecker
-        for region in self.buildings + self.roads:
-            region.update_infected()
+        self.update_attractiveness(self.current_time)
+        self.move_all(self.current_time)
+        self.update_infected()
 
 
 class Virus:

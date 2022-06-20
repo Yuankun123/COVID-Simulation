@@ -28,9 +28,7 @@ class AbstractProtocol:
         return res
 
     def place_between(self, region1, region2):
-        region1.protocols.append(self)
         region1.connect_dict[self] = {}
-        region2.protocols.append(self)
         region2.connect_dict[self] = {}
 
     def __repr__(self):
@@ -41,9 +39,12 @@ class AbstractRegion:
     def __init__(self, name: str, *args, add_self=True, **kwargs):
         self.na = name
         self.add_self = add_self
-        self.protocols: list[AbstractProtocol] = []
         self.connect_dict: dict[AbstractProtocol, dict[AbstractRegion: int]] = {}
         self.finished = False  # whether the connection dict has been generated
+
+    @property
+    def protocols(self):
+        return list(self.connect_dict.keys())
 
     def _generate_connection_dict(self,
                                   current_distance: int = 0,

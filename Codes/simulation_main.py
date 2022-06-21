@@ -1,9 +1,11 @@
-from Objects import Simulation, TIME_CONSTANT
-from Tool import rand_rearrange
+from objects import Simulation, TIME_CONSTANT
+from tools import rand_rearrange
 import matplotlib.pyplot as plt
 import random
 import threading
 import time
+import sys
+sys.setrecursionlimit(6000)
 # ask display
 display = input('Display?, Y or N')
 
@@ -39,14 +41,13 @@ class DSimulation(Simulation):
         plt.ylim(0, self.size - 1)
         plt.title(f'{sim.current_time // TIME_CONSTANT}')
         axes = plt.gca()
-        for region in self.buildings:
+        for region in self.buildings.values():
             axes.add_artist(plt.Rectangle(xy=tuple(region.loc),
                                           width=region.size, height=region.size, fill=False))
         for road in self.roads:
             axes.add_artist(plt.Line2D(xdata=[protocol.pos[0] for protocol in road.protocols],
                                        ydata=[protocol.pos[1] for protocol in road.protocols],
-                                       linewidth=1, color='red', fillstyle='none',
-                                       marker='x', markersize=10))
+                                       linewidth=1, color='black', fillstyle='none', markersize=10))
 
         plt.scatter(x=[indiv.pos[0] for indiv in self.normal_individuals],
                     y=[indiv.pos[1] for indiv in self.normal_individuals],
@@ -69,31 +70,36 @@ class DSimulation(Simulation):
 sim = DSimulation(time_period=(6 * TIME_CONSTANT, 20 * TIME_CONSTANT), size=1000, population=300, initial_infected=20,
                   step_length=10, drift_sigma=3, transport_activity=test_transport_activity, infection_radius=1.8,
                   risk=0.01)
-R1 = sim.add_region('R1', (250, 250), 101, 'R')
-R2 = sim.add_region('R2', (250, 450), 101, 'R')
-R3 = sim.add_region('R3', (250, 650), 101, 'R')
-R4 = sim.add_region('R4', (450, 250), 101, 'R')
-T1 = sim.add_region('T1', (450, 450), 101, 'T')
-T2 = sim.add_region('T2', (450, 650), 101, 'T')
-T3 = sim.add_region('T3', (650, 250), 101, 'T')
-T4 = sim.add_region('T4', (650, 450), 101, 'T')
-T5 = sim.add_region('T5', (650, 650), 101, 'T')
 
-sim.build_road({R1: (350, 300), R4: (450, 300)}, 5)
-sim.build_road({R2: (350, 500), T1: (450, 500)}, 5)
-sim.build_road({R3: (350, 700), T2: (450, 700)}, 5)
-sim.build_road({R4: (550, 300), T3: (650, 300)}, 5)
-sim.build_road({T1: (550, 500), T4: (650, 500)}, 5)
-sim.build_road({T2: (550, 700), T5: (650, 700)}, 5)
+# add buildings
+i = 0
+types = rand_rearrange(['R']*385 + ['T']*771)
+for x in range(0, 1000, 30):  # 34 columns
+    for y in range(0, 1000, 30):  # 34 rows
+        sim.add_building(str(i), (x, y), 11, f'{types[i]}')
+        i += 1
 
-sim.build_road({R1: (300, 350), R2: (300, 450)}, 5)
-sim.build_road({R4: (500, 350), T1: (500, 450)}, 5)
-sim.build_road({T3: (700, 350), T4: (700, 450)}, 5)
-sim.build_road({R2: (300, 550), R3: (300, 650)}, 5)
-sim.build_road({T1: (500, 550), T2: (500, 650)}, 5)
-sim.build_road({T4: (700, 550), T5: (700, 650)}, 5)
-sim.finish_construction()
+# horizontal roads
+i = 0
+for left_end_x in range(10, 1000, 30):
+    for left_end_y in range(5, 1000, 30):
+        sim.build_road({str(i): (left_end_x, left_end_y), str(i + 34): (left_end_x + 20, left_end_y)}, 5)
+        i += 1
 
+# horizontal roads
+i = 0
+for lower_end_x in range(5, 1000, 30):
+    for lower_end_y in range(10, 1000, 30):
+        if i % 34 == 33:
+            i += 1
+        sim.build_road({str(i): (lower_end_x, lower_end_y), str(i + 1): (lower_end_x, lower_end_y + 20)}, 5)
+        i += 1
+
+
+threading.stack_size(200000000)
+thr = threading.Thread(target=sim.finish_construction)
+thr.start()
+thr.join()
 # parallel random number generator
 stop = False
 

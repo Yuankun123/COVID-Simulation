@@ -1,8 +1,31 @@
 import copy
 import random
 import time
-
 import numpy as np
+REDTEXT = '\33[31m'
+WHITETEXT = '\33[39m'
+
+
+class Span:
+    def __init__(self, start, stop):
+        assert start <= stop
+        self.start = start
+        self.stop = stop
+        self.span = self.stop - self.start
+        self.cntr = (self.start + self.stop) / 2
+
+    def __contains__(self, val):
+        return self.start <= val < self.stop
+
+    def adjacent(self, val):
+        return self.start <= val <= self.stop
+
+    def overlap_span(self, other: 'Span') -> 'Span | None':
+        if self.start < other.stop:
+            return Span(self.start, other.stop)
+        if other.start < self.stop:
+            return Span(other.start, self.stop)
+        return
 
 
 def unit_vector(vector: np.ndarray) -> np.ndarray:
@@ -31,4 +54,4 @@ def norm(input_array: np.ndarray) -> float:
 
 if __name__ == '__main__':
     class _Test:
-        print(rand_rearrange([1, 2, 3, 4]))
+        s = Span(1, 4)

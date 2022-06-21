@@ -2,42 +2,17 @@ from tools import REDTEXT, WHITETEXT
 import math
 
 
-class AbstractProtocol:
-    def __init__(self, region1: 'AbstractRegion', region2: 'AbstractRegion', *args, **kwargs):
-        self.region1 = region1
-        self.region2 = region2
-
-    def other_side(self, origin: 'AbstractRegion') -> 'AbstractRegion':
-        if origin == self.region1:
-            return self.region2
-        else:
-            return self.region1
-
-    def accessible_from(self, origin: 'AbstractRegion', current_distance: int = 0, path: list['AbstractRegion'] = None):
-        res = {}
-        source_region = self.other_side(origin)
-        print(f'Getting view of {source_region} through {self}')
-        if source_region in path:
-            print('Meet the path')
-            return {}
-        path_copy = path[:]
-        path.append(source_region)
-        for region, distance in source_region.accessible_from(self, current_distance, path).items():
-            if region not in path_copy:
-                res[region] = distance + 1
-        return res
-
-    def place_between(self, region1, region2):
-        region1.connect_dict[self] = {}
-        region2.connect_dict[self] = {}
-
-    def __repr__(self):
-        return f'P[{self.region1}|{self.region2}]'
+class AbstractPart:
+    """An abstract part is the smallest object in a connection level,
+    it can be an abstract region or even an abstract block"""
+    def __init__(self, name: str): self.na = name
+    def __repr__(self): return REDTEXT + self.na + WHITETEXT
 
 
-class AbstractRegion:
-    def __init__(self, name: str, *args, add_self=True, **kwargs):
-        self.na = name
+class AbstractRegion(AbstractPart):
+    """An abstract region is the smallest object connectable by protocols"""
+    def __init__(self, name: str, add_self=True, **kwargs):
+        super(AbstractRegion, self).__init__(name)
         self.add_self = add_self
         self.connect_dict: dict[AbstractProtocol, dict[AbstractRegion: int]] = {}
         self.finished = False  # whether the connection dict has been generated
@@ -86,51 +61,135 @@ class AbstractRegion:
         self._generate_connection_dict()
         print(f'########{self} finished')
 
-    def find_protocols(self, target: 'AbstractRegion') -> list[AbstractProtocol]:
-        assert target != self
-        candidates: list[AbstractProtocol] = []
-        min_distance = math.inf
-        for protocol in self.protocols:
-            if self.connect_dict[protocol][target] <= min_distance:
-                candidates.append(protocol)
-                min_distance = self.connect_dict[protocol][target]
-        return candidates
-
-    def __repr__(self):
-        return REDTEXT + self.na + WHITETEXT
-
-    def detail_info(self):
-        res = f'{self.na}. ' \
+    def connection_info(self):
+        res = f'{self.region_na}. ' \
               f'Having protocols to: {", ".join([repr(protocol.other_side(self)) for protocol in self.protocols])}, '
         for region, distance in self.connect_dict.items():
             res += f'Having access to {region} in distance {distance} '
         return res
 
+    def find_parts(self, target: 'AbstractRegion') -> list[AbstractPart]:
+        assert target != self
+        candidates: list[AbstractPart] = []
+        min_distance = math.inf
+        for protocol in self.protocols:
+            if self.connect_dict[protocol][target] <= min_distance:
+                candidates.append(protocol.port_on(self))
+                min_distance = self.connect_dict[protocol][target]
+        return candidates
 
-class AbstractBlock:
-    def __init__(self):
-        self.regions: dict[str, AbstractRegion] = {}
 
-    def add_region(self, name, *args, add_self=True, **kwargs):
-        self.regions[name] = AbstractRegion(name, *args, add_self, **kwargs)
+class AbstractProtocol:
+    """an abstract protocol consist of two abstract regions and two abstract ports"""
 
-    def connect(self, region_na1, region_na2, *args, **kwargs):
-        assert region_na1 in self.regions.keys()
-        assert region_na2 in self.regions.keys()
-        region1, region2 = self.regions[region_na1], self.regions[region_na2]
-        new_protocol = AbstractProtocol(region1, region2, *args, **kwargs)
+    def __init__(self, region1: AbstractRegion, region2: AbstractRegion,
+                 port1: AbstractPart = None, port2: AbstractPart = None, **kwargs):
+        self.protocol_na = f'P[{region1}|{region2}]'
+        if not port1:
+            port1 = AbstractPart(f'Port1 of {self}')
+        if not port2:
+            port2 = AbstractPart(f'Port2 of {self}')
+
+        assert isinstance(region1, AbstractRegion), f'{region1} is not an abstract region'
+        assert isinstance(region2, AbstractRegion), f'{region2} is not an abstract region'
+        assert isinstance(port1, AbstractPart), f'{port1} is not an abstract port'
+        assert isinstance(port2, AbstractPart), f'{port2} is not an abstract port'
+
+        port1.port_na = f'Port1 of {self}'
+        port2.port_na = f'Port2 of {self}'
+        self.connect_dict: dict[AbstractRegion, tuple[AbstractPart, AbstractRegion]] = {
+            region1: (port1, region2),
+            region2: (port2, region1)
+        }
+
+    def other_side(self, origin: AbstractRegion) -> AbstractRegion: return self.connect_dict[origin][1]
+    def port_on(self, region: AbstractRegion) -> AbstractPart: return self.connect_dict[region][0]
+
+    def accessible_from(self, origin: AbstractRegion, current_distance: int = 0, path: list[AbstractRegion] = None):
+        res = {}
+        source_region = self.other_side(origin)
+        print(f'Getting view of {source_region} through {self}')
+        if source_region in path:
+            print('Meet the path')
+            return {}
+        path_copy = path[:]
+        path.append(source_region)
+        for region, distance in source_region.accessible_from(self, current_distance, path).items():
+            if region not in path_copy:
+                res[region] = distance + 1
+        return res
+
+    def place_between(self, region1: AbstractRegion, region2: AbstractRegion):
+        region1.connect_dict[self] = {}
+        region2.connect_dict[self] = {}
+
+    def __repr__(self):
+        return self.protocol_na
+
+
+class ComplexRegion(AbstractRegion):
+    """A complex region preserve all features of a region. It can also contains inner regions
+    that are either complex or not"""
+    default_parts_type = AbstractPart
+
+    def __init__(self, name, add_self=True, inner_parts_type=None, **kwargs):
+        super(ComplexRegion, self).__init__(name, add_self, **kwargs)
+        self._part_name_dict: dict[str, AbstractPart] = {}
+        self.inner_protocols: list[AbstractProtocol] = []
+        if inner_parts_type:
+            self.inner_parts_type = inner_parts_type
+        else:
+            self.inner_parts_type = self.default_parts_type
+
+    @property
+    def parts(self) -> list[AbstractPart]: return list(self._part_name_dict.values())
+    def __getitem__(self, item: str) -> AbstractPart: return self._part_name_dict[item]
+    def __setitem__(self, key: str, value: AbstractPart): self._part_name_dict[key] = value
+
+    def __contains__(self, item: str | AbstractPart):
+        """item can be the name of the region of the region object"""
+        return item in self._part_name_dict.keys() or item in self._part_name_dict.values()
+
+    def recursively_contains(self, item: str | AbstractPart):
+        if item in self:
+            return True
+        for part in self.parts:
+            if hasattr(part, 'recursively_contains') and part.recursively_contains(item):
+                return True
+        return False
+
+    def add_inner_region(self, name: str, add_self=True, **kwargs):
+        assert name not in self, f'Name {name} already exists'
+        self[name] = self.inner_region_type(name, add_self=add_self, **kwargs)
+        return self[name]
+
+    def connect(self, region_na1: str, region_na2: str, **kwargs):
+        assert region_na1 in self, f'Name {region_na1} dose not exist'
+        assert region_na2 in self, f'Name {region_na2} does not exist'
+        region1, region2 = self[region_na1], self[region_na2]
+        new_protocol = AbstractProtocol(region1, region2, port1, port2, **kwargs)
         new_protocol.place_between(region1, region2)
+        self.inner_protocols.append(new_protocol)
+
+    def finish_inner_construction(self):
+        for region in self.inner_regions:
+            region.finish_construction()
+
+
+class ProtocolType(type):
+    """a meta class used to generate protocol types"""
+    pass
 
 
 if __name__ == '__main__':
     class _Test:
-        host = AbstractBlock()
-        host.add_region('A')
-        host.add_region('B')
-        host.add_region('C')
-        host.add_region('D')
-        host.add_region('E')
-        host.add_region('F')
+        host = ComplexRegion('1st host')
+        host.add_inner_region('A')
+        host.add_inner_region('B')
+        host.add_inner_region('C')
+        host.add_inner_region('D')
+        host.add_inner_region('E')
+        host.add_inner_region('F')
         host.connect('A', 'B')
         host.connect('B', 'C')
         host.connect('C', 'D')
@@ -138,11 +197,10 @@ if __name__ == '__main__':
         host.connect('E', 'F')
         host.connect('F', 'A')
         host.connect('B', 'E')
+        host.finish_inner_construction()
 
-        for region in host.regions.values():
-            region.finish_construction()
-        for region in host.regions.values():
+        for region in host.inner_regions:
             print(region.connect_dict)
             print(region.finished)
 
-        print(host.regions['A'].find_protocols(host.regions['E']))
+        print(host['A'].find_ports(host['E']))

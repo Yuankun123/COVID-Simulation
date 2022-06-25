@@ -1,18 +1,43 @@
 """Pure Gold"""
-import logging
 from tools import red_text
 import math
-logger = logging.getLogger()
+from typing import Optional
+# status constants:
+PORT = 0
+REGION = 1
+DISTRICT = 2
+CITY = 3
+
+__all__ = ['get_base', 'AbstractPort', 'AbstractRegion', 'AbstractDistrict', 'AbstractCity', 'PORT',
+           'REGION', 'DISTRICT', 'CITY']
 
 
-class AbstractPort:
-    master: 'AbstractRegion'
+def get_base():
+    class _Base:
+        __status = -1
+        __next_status = 0
+        types: dict[int, type] = {}
+
+        def __init_subclass__(cls, new_branch=False, **kwargs):
+            super(_Base, _Base).__init_subclass__(**kwargs)
+            assert _Base.__next_status <= 4
+            cls.__status = _Base.__next_status
+            _Base.__next_status += 1
+            _Base.types[cls.__status] = cls
+    return _Base
+
+
+class AbstractPort(get_base()):
     """An abstract port is the smallest object in a connection level. It is used to constitute a protocol"""
-    def __init__(self, name: str, level=0, master: 'AbstractRegion' = None, **kwargs):
-        assert level >= 0, 'The level of a port should be at least 0'
+    master: Optional['AbstractRegion']
+
+    def __init__(self, name: str, **kwargs):
         self.na = name
-        self.level = level
+        self.master = None
+
+    def slaved(self, master: 'AbstractRegion') -> 'AbstractPort':
         self.master = master
+        return self
 
     def __repr__(self):
         return self.na
@@ -21,30 +46,26 @@ class AbstractPort:
 class AbstractRegion(AbstractPort):
     """An abstract region is the smallest object connectable by protocols.
     It can be a member of an Abstract District"""
-    master: 'AbstractDistrict'
+    master: Optional['AbstractDistrict']
 
-    def __init__(self, name: str, level=1, master: 'AbstractRegion' = None, add_self=True, **kwargs):
-        assert level >= 1, 'The level of a region should be at least 1'
-        super(AbstractRegion, self).__init__(name, level, master)
+    def __init__(self, name: str, add_self=True, **kwargs):
+        super(AbstractRegion, self).__init__(name)
         self.add_self = add_self
         self.connect_dict: dict[AbstractProtocol, dict[AbstractRegion: int]] = {}
-        self.finished = False  # whether the connection dict has been generated
+        self.connected = False  # whether the connection dict has been generated\
+        self.level = 0
 
     def __repr__(self):
-        return red_text(f'BR_{self.na}')
+        return red_text(f'AR_{self.na}')
 
     @property
     def protocols(self):
         return list(self.connect_dict.keys())
 
-    @property
-    def ports(self) -> list[AbstractPort]:
-        return [protocol.port_against(self) for protocol in self.protocols]
-
     def _generate_connection_dict(self,
                                   current_distance: int = 0,
                                   root_path: list['AbstractRegion'] = None):
-        assert not self.finished
+        assert not self.connected
         top_level = False
         if root_path is None:
             root_path = []
@@ -56,12 +77,12 @@ class AbstractRegion(AbstractPort):
             current_distance += 1  # the distance to the next region
             self.connect_dict[protocol] = protocol.accessible_from(self, current_distance, path)
         if top_level:
-            self.finished = True
+            self.connected = True
 
     def accessible_from(self, origin=None, current_distance: int = 0, path: list['AbstractRegion'] = None) -> \
             dict['AbstractRegion', int]:
         # print(f'Getting accessible regions from {self} through protocols except {origin}')
-        if not self.finished:
+        if not self.connected:
             self._generate_connection_dict(current_distance, path)
         else:
             pass
@@ -125,10 +146,10 @@ class AbstractProtocol:
         return res
 
     def place_between(self, region1: AbstractRegion, region2: AbstractRegion):
-        if not region1.finished and not region2.finished:
+        if not region1.connected and not region2.connected:
             region1.connect_dict[self] = {}
             region2.connect_dict[self] = {}
-        elif region1.finished and region2.finished:
+        elif region1.connected and region2.connected:
             assert region1.master != region2.master, f'The district {region1.master} has been finished. Cannot add' \
                                                      f'connection'
             region1.connect_dict[self] = {region2: 1}
@@ -157,38 +178,23 @@ class AbstractProtocol:
 
 
 class AbstractDistrict(AbstractRegion):
-    """An abstract district can contain abstract regions (which means it can also contain other abstract districts)
-    It inherits AbstractRegion because it can be seen as a region
-    It inherits AbstractPort so that it can be seen as a port
-    The following implementation makes it a container of abstract regions"""
-    master: 'AbstractDistrict'
-    port_type = AbstractPort
-    root_region_type = AbstractRegion
+    """An abstract district can contain abstract regions (which means it can also contain other abstract districts).
+    It inherits AbstractRegion because it can be seen as a region.
+    It inherits AbstractPort so that it can be seen as a port.
+    The following implementation makes it a container of abstract regions."""
+    master: Optional['AbstractDistrict']
 
-    def __init__(self, name, level=2, master: 'AbstractDistrict' = None, add_self=True, **kwargs):
-        assert level >= 2, 'The level of a district should be at least 2'
-        AbstractRegion.__init__(self, name, level, master, add_self, **kwargs)
+    def __init__(self, name, **kwargs):
+        super().__init__(name, True, **kwargs)
         self._subregions_name_dict: dict[str, AbstractRegion] = {}
-        self.inner_finished = False
-
-    @property
-    def ports(self) -> list[AbstractPort]:
-        res = []
-        for region in self._root_region_dict.values():
-            res.extend(region.ports)
-        return res
+        self._inner_finished = False
 
     @property
     def subregions(self) -> list[AbstractRegion]:
         """All subregions DIRECTLY belong to this district"""
         return list(self._subregions_name_dict.values())
 
-    @property
-    def defined_names(self) -> list[str]:
-        """All subregion names DIRECTLY defined in this district"""
-        return list(self._subregions_name_dict.keys())
-
-    @property
+    '''@property
     def _root_region_dict(self):
         if self.level == 2:
             return self._subregions_name_dict
@@ -200,99 +206,123 @@ class AbstractDistrict(AbstractRegion):
             for name, root_region in subregion._root_region_dict.items():
                 assert name not in res.keys(), f'Overlapped name: {name}'
                 res[name] = root_region
-        return res
+        return res'''
+    @staticmethod
+    def __wrapped(target: AbstractRegion, stop_level: int) -> 'AbstractDistrict':
+        current_target = target
+        index = 0
+        while current_target.level < stop_level:
+            current_target = AbstractDistrict(f'Wrapper #{index} of {target.na}')(current_target)
+            index += 1
+        return current_target
 
-    def __setitem__(self, name: str, region: 'AbstractRegion'):
-        """DIRECTLY add a subregion in this district.The name should not exist in the district previously"""
-        if name not in self.defined_names:
-            self._subregions_name_dict[name] = region
-        else:
-            raise KeyError(f'Name {name} already exists')
+    def _additional_task(self, new_subregion):
+        """subclasses can override this method to preform some tasks after adding a new region"""
+        pass
 
-    def add_subregion(self, name: str, add_self=True, **kwargs) -> 'AbstractDistrict | AbstractRegion':
-        new_level = self.level - 1
-        assert new_level >= 1, 'Level for region should be at least 1'
-        if new_level == 1:  # if we are adding a basic region
-            new_subregion = self[name] = self.root_region_type(name, new_level, add_self=add_self,
-                                                               master=self, **kwargs)
-        else:  # if we are adding a nested district
-            new_subregion = self[name] = self.__class__(name, new_level, add_self=add_self, master=self, **kwargs)
-        return new_subregion
+    def __add_subregions(self, new_subregions: list[AbstractRegion]) -> None:
+        """This method should be called only once"""
+        max_level = max([new_subregion.level for new_subregion in new_subregions])
+        for new_subregion in new_subregions:
+            name = new_subregion.na
+            assert name not in self._subregions_name_dict.keys(), f'Name {name} already exists'
+
+            new_subregion = AbstractDistrict.__wrapped(new_subregion, max_level)
+            assert new_subregion.level == max_level, f'Wrapper fails'
+            new_subregion.slaved(master=self)
+            self.level = max_level + 1
+            self._subregions_name_dict[name] = new_subregion
+            self._additional_task(new_subregion)
 
     @classmethod
-    def _connect(cls, root_level_port1: 'AbstractPort', root_level_port2: 'AbstractPort'):
+    def __connect(cls, root_level_port1: 'AbstractPort', root_level_port2: 'AbstractPort'):
         new_protocol = AbstractProtocol(root_level_port1, root_level_port2)
         master1, master2 = root_level_port1.master, root_level_port2.master
-        assert master1 != master2, 'Cannot connect a region to itself'
+        assert master1 != master2, f'Cannot connect {master1} to itself'
         new_protocol.place_between(master1, master2)
         if master1.master and master2.master:
             if master1.master != master2.master:
-                cls._connect(master1, master2)
+                cls.__connect(master1, master2)
 
-    def connect(self, region1: 'AbstractRegion', region2: AbstractRegion, kwargs_region1=None, kwargs_region2=None):
-        assert not self.inner_finished, f'The district {self} has been finished. Cannot add connection'
-        if kwargs_region1 is None:
-            kwargs_region1 = {}
-        if kwargs_region2 is None:
-            kwargs_region2 = {}
+    @staticmethod
+    def _get_ports(region1: AbstractRegion, region2: AbstractRegion) -> tuple[AbstractPort, AbstractPort]:
+        """This method should be overridden if you want a different port type"""
+        root_port1 = AbstractPort(name=f'AP[{region2}->{region1}]').slaved(master=region1)
+        root_port2 = AbstractPort(name=f'AP[{region1}->{region2}]').slaved(master=region2)
+        return root_port1, root_port2
 
-        assert region1.level == region2.level == 1, 'Connection should be built on root level regions'
+    def __connect_integrated(self, region1: 'AbstractRegion', region2: AbstractRegion):
+        # make sure they are connectable
+        assert region1 != region2, f'Cannot connect {region1} to itself'
+        assert region1.level == region2.level
+        assert not isinstance(region1, AbstractDistrict) and not isinstance(region2, AbstractDistrict), \
+            'Connection should be built on root level regions'
         examine_master1, examine_master2 = region1.master, region2.master
         while examine_master1 != examine_master2:
-            assert examine_master1.inner_finished, f'A master of {region1}, {examine_master1}, is not yet finished'
-            assert examine_master2.inner_finished, f'A master of {region2}, {examine_master2}, is not yet finished'
+            assert examine_master1._inner_finished, f'A master of {region1}, {examine_master1}, is not yet finished'
+            assert examine_master2._inner_finished, f'A master of {region2}, {examine_master2}, is not yet finished'
             examine_master1, examine_master2 = examine_master1.master, examine_master2.master
         assert examine_master1 == self, \
             f'{self} is not the lowest level common master for {region1} and {region2}'
 
-        root_port1 = self.port_type(f'BP[{region2}->{region1}]', master=region1, **kwargs_region1)
-        root_port2 = self.port_type(f'BP[{region1}->{region2}]', master=region2, **kwargs_region2)
-        self._connect(root_port1, root_port2)
+        root_port1, root_port2 = self._get_ports(region1, region2)
+        self.__connect(root_port1, root_port2)
 
-    def finish_inner_construction(self):
+    def __finish_construction(self) -> None:
         for subregion in self.subregions:
             subregion._generate_connection_dict()
-        self.inner_finished = True
-    '''@staticmethod
-    def build(self, construction_tree: dict[dict, dict], **root_kwargs):
-        root =
-        for district in construction_tree.keys():'''
+        self._inner_finished = True
+
+    def __call__(self, *regions: AbstractRegion, connections: tuple[tuple[AbstractRegion, AbstractRegion], ...] = ()) \
+            -> 'AbstractDistrict':
+        assert not self._inner_finished, 'A district can only be constructed once'
+        self.__add_subregions(list(regions))
+        for connection in connections:
+            self.__connect_integrated(*connection)
+        self.__finish_construction()
+        return self
+
+    def __repr__(self):
+        return red_text(f'AD_{self.na}')
+
+
+class AbstractCity(AbstractDistrict):
+    master: None
+    TheCity: 'AbstractCity' = None
+
+    def __init__(self, name, **kwargs):
+        super().__init__(name, **kwargs)
+        __class__.TheCity = self
+
+    def slaved(self, master: 'AbstractRegion'):
+        raise RuntimeError('City is on the top of district hierarchy and cannot be slaved')
 
 
 if __name__ == '__main__':
     class _Test:
-        super_host = AbstractDistrict('1st host', level=3)
-        host1 = super_host.add_subregion('2nd host1')
-        A = host1.add_subregion('A')
-        B = host1.add_subregion('B')
-        C = host1.add_subregion('C')
-        D = host1.add_subregion('D')
-        host2 = super_host.add_subregion('2nd host2')
-        E = host2.add_subregion('E')
-        F = host2.add_subregion('F')
-        G = host2.add_subregion('G')
-        H = host2.add_subregion('H')
-
-        host1.connect(A, B)
-        host1.connect(B, C)
-        host1.connect(C, D)
-        host1.connect(D, A)
-        host1.finish_inner_construction()
-
-        host2.connect(E, F)
-        host2.connect(F, G)
-        host2.connect(G, H)
-        host2.connect(H, E)
-        host2.finish_inner_construction()
-
-        super_host.connect(A, E)
-        super_host.finish_inner_construction()
+        super_host = AbstractCity('1st host')(
+            (host1 := AbstractDistrict('2nd host1'))(
+                (A := AbstractRegion('A')),
+                (B := AbstractRegion('B')),
+                (C := AbstractRegion('C')),
+                (D := AbstractRegion('D')),
+                connections=((A, B), (B, C), (C, D), (D, A))
+            ),
+            #(host2 := AbstractDistrict('2nd host2'))(
+            #    (E := AbstractRegion('E')),
+            #    (F := AbstractRegion('F')),
+            #    (G := AbstractRegion('G')),
+            #    (H := AbstractRegion('H')),
+            #    connections=((E, F), (F, G), (G, H), (H, E))
+            #),
+            (E := AbstractRegion('E')),
+            connections=((A, E),)
+        )
 
         for region in host1.subregions:
             print(region.connect_dict)
-            print(region.finished)
+            print(region.connected)
 
         print(host1.connection_info())
-        print(host1.find_ports(host2))
         print(A.find_ports(B))
-        print(A.ports)
+        print(AbstractPort.types)

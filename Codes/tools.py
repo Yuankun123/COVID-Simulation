@@ -2,17 +2,15 @@ import copy
 import random
 import time
 import numpy as np
-REDTEXT = '\33[31m'
-WHITETEXT = '\33[39m'
 
 
 class Span:
-    def __init__(self, start, stop):
-        assert start <= stop
+    def __init__(self, start: float = 0, stop: float = 0):
+        assert stop >= start
         self.start = start
         self.stop = stop
-        self.span = self.stop - self.start
-        self.cntr = (self.start + self.stop) / 2
+        self.span: float = self.stop - self.start
+        self.cntr: float = (self.start + self.stop) / 2
 
     def __contains__(self, val):
         return self.start <= val < self.stop
@@ -20,12 +18,18 @@ class Span:
     def adjacent(self, val):
         return self.start <= val <= self.stop
 
-    def overlap_span(self, other: 'Span') -> 'Span | None':
-        if self.start < other.stop:
-            return Span(self.start, other.stop)
-        if other.start < self.stop:
-            return Span(other.start, self.stop)
-        return
+    def overlapped_span(self, other: 'Span') -> 'Span | None':
+        start = max(self.start, other.start)
+        stop = min(self.stop, other.stop)
+        if start <= stop:
+            return Span(start, stop)
+
+    def __repr__(self):
+        return f'Span({self.start}, {self.stop})'
+
+
+def red_text(pale_str: str):
+    return f'\33[31m{pale_str}\33[39m'
 
 
 def unit_vector(vector: np.ndarray) -> np.ndarray:
@@ -53,5 +57,5 @@ def norm(input_array: np.ndarray) -> float:
 
 
 if __name__ == '__main__':
-    class _Test:
-        s = Span(1, 4)
+    s = Span(new_tuple=(1, 4))
+    print(s)

@@ -5,11 +5,12 @@ import numpy as np
 
 
 class Span:
-    def __init__(self, start: float = 0, stop: float = 0):
+    def __init__(self, start: float = 0, stop: float = 0, _len: int = None):
+        if _len:
+            stop = start + _len
         assert stop >= start
         self.start = start
         self.stop = stop
-        self.span: float = self.stop - self.start
         self.cntr: float = (self.start + self.stop) / 2
 
     def __contains__(self, val):
@@ -24,8 +25,15 @@ class Span:
         if start <= stop:
             return Span(start, stop)
 
+    def __len__(self):
+        return self.stop - self.start
+
     def __repr__(self):
         return f'Span({self.start}, {self.stop})'
+
+    def __iter__(self):
+        yield self.start
+        yield self.stop
 
 
 def red_text(pale_str: str):
@@ -57,5 +65,5 @@ def norm(input_array: np.ndarray) -> float:
 
 
 if __name__ == '__main__':
-    s = Span(new_tuple=(1, 4))
-    print(s)
+    s = Span(*(1, 4))
+    print(*s)

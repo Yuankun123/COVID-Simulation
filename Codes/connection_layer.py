@@ -1,37 +1,29 @@
 """Pure Gold"""
 from tools import red_text
 import math
-from typing import Optional
-# status constants:
-PORT = 0
-REGION = 1
-DISTRICT = 2
-CITY = 3
-
-__all__ = ['get_base', 'AbstractPort', 'AbstractRegion', 'AbstractDistrict', 'AbstractCity', 'PORT',
-           'REGION', 'DISTRICT', 'CITY']
+from typing import Optional, Iterable
+__all__ = ['AbstractPort', 'AbstractRegion', 'AbstractDistrict']
 
 
-def get_base():
-    class _Base:
-        __status = -1
-        __next_status = 0
-        types: dict[int, type] = {}
+class Base:
+    port_type: type = None
 
-        def __init_subclass__(cls, new_branch=False, **kwargs):
-            super(_Base, _Base).__init_subclass__(**kwargs)
-            assert _Base.__next_status <= 4
-            cls.__status = _Base.__next_status
-            _Base.__next_status += 1
-            _Base.types[cls.__status] = cls
-    return _Base
+    def __init_subclass__(cls, is_port_type=False, **kwargs):
+        """A subclass's port type is itself if declared with is_port_type = True; otherwise, its port type is
+        set to that of its base"""
+        if is_port_type:
+            cls.port_type = cls
+        else:
+            assert issubclass(cls.__base__, Base)
+            cls.port_type = cls.__base__.port_type
 
 
-class AbstractPort(get_base()):
+class AbstractPort(Base, is_port_type=True):
     """An abstract port is the smallest object in a connection level. It is used to constitute a protocol"""
     master: Optional['AbstractRegion']
 
     def __init__(self, name: str, **kwargs):
+        """name is just a reminder for debugging, not important"""
         self.na = name
         self.master = None
 
@@ -186,29 +178,17 @@ class AbstractDistrict(AbstractRegion):
 
     def __init__(self, name, **kwargs):
         super().__init__(name, True, **kwargs)
-        self._subregions_name_dict: dict[str, AbstractRegion] = {}
+        self.subregions: list[AbstractRegion] = []
         self._inner_finished = False
 
-    @property
-    def subregions(self) -> list[AbstractRegion]:
-        """All subregions DIRECTLY belong to this district"""
-        return list(self._subregions_name_dict.values())
+    def __iter__(self):
+        return self.subregions.__iter__()
 
-    '''@property
-    def _root_region_dict(self):
-        if self.level == 2:
-            return self._subregions_name_dict
-        res = {}
-        for subregion in self.subregions:
-            assert isinstance(subregion, AbstractDistrict), f'{self} is not a lowest level district, ' \
-                                                            f'but one of its subregion, {subregion}, ' \
-                                                            f'is not a district'
-            for name, root_region in subregion._root_region_dict.items():
-                assert name not in res.keys(), f'Overlapped name: {name}'
-                res[name] = root_region
-        return res'''
+    def __getitem__(self, item):
+        return self.subregions.__getitem__(item)
+
     @staticmethod
-    def __wrapped(target: AbstractRegion, stop_level: int) -> 'AbstractDistrict':
+    def _wrapped(target: AbstractRegion, stop_level: int) -> 'AbstractDistrict':
         current_target = target
         index = 0
         while current_target.level < stop_level:
@@ -216,23 +196,15 @@ class AbstractDistrict(AbstractRegion):
             index += 1
         return current_target
 
-    def _additional_task(self, new_subregion):
-        """subclasses can override this method to preform some tasks after adding a new region"""
-        pass
-
     def __add_subregions(self, new_subregions: list[AbstractRegion]) -> None:
         """This method should be called only once"""
         max_level = max([new_subregion.level for new_subregion in new_subregions])
         for new_subregion in new_subregions:
-            name = new_subregion.na
-            assert name not in self._subregions_name_dict.keys(), f'Name {name} already exists'
-
-            new_subregion = AbstractDistrict.__wrapped(new_subregion, max_level)
+            new_subregion = self._wrapped(new_subregion, max_level)
             assert new_subregion.level == max_level, f'Wrapper fails'
             new_subregion.slaved(master=self)
             self.level = max_level + 1
-            self._subregions_name_dict[name] = new_subregion
-            self._additional_task(new_subregion)
+            self.subregions.append(new_subregion)
 
     @classmethod
     def __connect(cls, root_level_port1: 'AbstractPort', root_level_port2: 'AbstractPort'):
@@ -244,11 +216,11 @@ class AbstractDistrict(AbstractRegion):
             if master1.master != master2.master:
                 cls.__connect(master1, master2)
 
-    @staticmethod
-    def _get_ports(region1: AbstractRegion, region2: AbstractRegion) -> tuple[AbstractPort, AbstractPort]:
+    @classmethod
+    def _get_ports(cls, region1: AbstractRegion, region2: AbstractRegion) -> tuple[AbstractPort, AbstractPort]:
         """This method should be overridden if you want a different port type"""
-        root_port1 = AbstractPort(name=f'AP[{region2}->{region1}]').slaved(master=region1)
-        root_port2 = AbstractPort(name=f'AP[{region1}->{region2}]').slaved(master=region2)
+        root_port1 = cls.port_type(name=f'AP[{region2}->{region1}]').slaved(master=region1)
+        root_port2 = cls.port_type(name=f'AP[{region1}->{region2}]').slaved(master=region2)
         return root_port1, root_port2
 
     def __connect_integrated(self, region1: 'AbstractRegion', region2: AbstractRegion):
@@ -273,7 +245,7 @@ class AbstractDistrict(AbstractRegion):
             subregion._generate_connection_dict()
         self._inner_finished = True
 
-    def __call__(self, *regions: AbstractRegion, connections: tuple[tuple[AbstractRegion, AbstractRegion], ...] = ()) \
+    def __call__(self, *regions: AbstractRegion, connections: Iterable[tuple[AbstractRegion, AbstractRegion]] = ()) \
             -> 'AbstractDistrict':
         assert not self._inner_finished, 'A district can only be constructed once'
         self.__add_subregions(list(regions))
@@ -286,21 +258,9 @@ class AbstractDistrict(AbstractRegion):
         return red_text(f'AD_{self.na}')
 
 
-class AbstractCity(AbstractDistrict):
-    master: None
-    TheCity: 'AbstractCity' = None
-
-    def __init__(self, name, **kwargs):
-        super().__init__(name, **kwargs)
-        __class__.TheCity = self
-
-    def slaved(self, master: 'AbstractRegion'):
-        raise RuntimeError('City is on the top of district hierarchy and cannot be slaved')
-
-
 if __name__ == '__main__':
     class _Test:
-        super_host = AbstractCity('1st host')(
+        super_host = AbstractDistrict('1st host')(
             (host1 := AbstractDistrict('2nd host1'))(
                 (A := AbstractRegion('A')),
                 (B := AbstractRegion('B')),
@@ -325,4 +285,5 @@ if __name__ == '__main__':
 
         print(host1.connection_info())
         print(A.find_ports(B))
-        print(AbstractPort.types)
+        print(AbstractDistrict.port_type)
+        print(Base.port_type)

@@ -5,7 +5,7 @@ from typing import Iterable
 from collections import OrderedDict
 import warnings
 import random
-__all__ = ['AbstractPart', 'AbstractRegion', 'AbstractDistrict']
+__all__ = ['AbstractPart', 'AbstractRegion', 'AbstractDistrict', 'Address']
 
 
 class AbstractPart:
@@ -112,6 +112,9 @@ class AbstractRegion(AbstractPart):
             res += f'Having access to {region} in distance {distance} '
         return res
 
+    def find_port(self, other: 'AbstractRegion') -> AbstractPart:
+        return self.address.find_port(other.address)
+
 
 class AbstractProtocol:
     """an abstract protocol consist of two abstract regions and two abstract ports"""
@@ -186,13 +189,14 @@ class AbstractDistrict(AbstractRegion, _SelfReferenceHelper, is_wrap_type=True):
     It inherits AbstractRegion because it can be seen as a region.
     It inherits AbstractPort so that it can be seen as a port.
     The following implementation makes it a container of abstract regions."""
-    port_type = AbstractPart
+    part_type = AbstractPart
     subparts: list[AbstractRegion]
     cls_abbrev = 'AD'
 
     def __init__(self, name, **kwargs):
         super().__init__(name, **kwargs)
-        self.direct_subregions: OrderedDict[str, AbstractRegion] = OrderedDict([])  # exclude wrappers
+        self.direct_subregions: OrderedDict[str, AbstractRegion | AbstractDistrict] = OrderedDict([])
+        # exclude wrappers
         self._inner_finished = False
 
     def __iter__(self):
@@ -237,8 +241,8 @@ class AbstractDistrict(AbstractRegion, _SelfReferenceHelper, is_wrap_type=True):
     @classmethod
     def _get_ports(cls, region1: AbstractRegion, region2: AbstractRegion) -> tuple[AbstractPart, AbstractPart]:
         """This method should be overridden if you want a different port type"""
-        root_port1 = cls.port_type(name=f'[{region2.rna}->{region1.rna}]').add_master(master=region1)
-        root_port2 = cls.port_type(name=f'[{region1.rna}->{region2.rna}]').add_master(master=region2)
+        root_port1 = cls.part_type(name=f'[{region2.rna}->{region1.rna}]').add_master(master=region1)
+        root_port2 = cls.part_type(name=f'[{region1.rna}->{region2.rna}]').add_master(master=region2)
         return root_port1, root_port2
 
     def __connect_integrated(self, region1: 'AbstractRegion', region2: AbstractRegion):
@@ -338,4 +342,6 @@ if __name__ == '__main__':
             print(region.connected)
 
         print(host1.connection_info())
-        print('Address:', super_host['E'].address)
+        print(Address.find_port(super_host['2nd-host1']['A'].address, super_host['2nd-host1']['C'].address))
+        print(super_host['2nd-host1']['A'].address)
+        print(super_host['2nd-host1']['C'].address)

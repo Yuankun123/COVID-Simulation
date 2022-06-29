@@ -1,15 +1,15 @@
 import matplotlib.pyplot as plt
 from geography_layer import GeoDistrict
+from typing import Iterable
 __all__ = ['Displayer']
 
 
 class Displayer:
     index = 0
 
-    def __init__(self, vcity: GeoDistrict, crowd):
-        self.name = vcity.na
+    def __init__(self, vcity: GeoDistrict, x_span: Iterable, y_span: Iterable):
+        self.name = vcity.rna
         self.vcity = vcity
-        self.crowd = crowd
         self.index = Displayer.index
         Displayer.index += 1
 
@@ -19,18 +19,18 @@ class Displayer:
         axes = plt.gca()
         axes.set_aspect(1)
 
-        plt.xlim(*self.vcity.x_span)
-        plt.ylim(*self.vcity.y_span)
+        plt.xlim(*x_span)
+        plt.ylim(*y_span)
 
     def refresh(self):
         plt.figure(self.index)
         axes = plt.gca()
 
         for region in self.vcity.buildings:
-            axes.add_artist(plt.Rectangle(xy=tuple(region.pos), width=len(region.x_span), height=len(region.y_span),
-                                          fill=False))
+            axes.add_artist(plt.Rectangle(xy=tuple(region.sw_pos), width=len(region.x_span), height=len(region.y_span),
+                                          fill=True, facecolor='blue', alpha=0.2, edgecolor='black'))
         for road in self.vcity.roads:
-            axes.add_artist(plt.Rectangle(xy=tuple(road.pos), width=len(road.x_span), height=len(road.y_span),
+            axes.add_artist(plt.Rectangle(xy=tuple(road.sw_pos), width=len(road.x_span), height=len(road.y_span),
                                           fill=True, facecolor='#e3d1d1', edgecolor='black'))
 
         plt.scatter(x=[port.pos[0] for port in self.vcity.ports],

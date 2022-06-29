@@ -3,17 +3,21 @@ import time
 import numpy as np
 from tools import Span
 from connection_layer import *
-__all__ = ['GeoPort', 'GeoRegion', 'GeoDistrict']
+__all__ = ['GeoPart', 'GeoRegion', 'GeoDistrict']
 
 
-class GeoPort(AbstractPort, is_port_type=True):
+class GeoPart(AbstractPart):
+    cls_abbrev = 'GP'
+
     def __init__(self, name: str, pos: np.ndarray, **kwargs):
-        super().__init__(name, **kwargs)
+        super(GeoPart, self).__init__(name, **kwargs)
         self.pos = pos
 
 
-class GeoRegion(GeoPort, AbstractRegion):
+class GeoRegion(AbstractRegion):
     """Every Building is a rectangle"""
+    cls_abbrev = 'GR'
+
     def __init__(self,
                  name: str,
                  x_span: tuple | Span,
@@ -21,8 +25,8 @@ class GeoRegion(GeoPort, AbstractRegion):
                  add_self=True,
                  **kwargs):
         self.x_span, self.y_span = Span(*x_span), Span(*y_span)
-        super().__init__(name, np.array([self.x_span.start, self.y_span.start]), **kwargs)
-        self.add_self = add_self
+        super().__init__(name, add_self=add_self, **kwargs)
+        self.sw_pos = np.array([self.x_span.start, self.y_span.start])
         self.cntr = np.array([self.x_span.cntr, self.y_span.cntr])
 
     def __contains__(self, pos: np.ndarray):
@@ -37,26 +41,20 @@ class GeoRegion(GeoPort, AbstractRegion):
             res = (random.gauss(x_mu, x_sigma), random.gauss(y_mu, y_sigma))
         return np.array(np.round_(res))
 
-    @property
-    def ports(self) -> list[GeoPort]:
-        return [protocol.port_against(self) for protocol in self.protocols]
 
-    def __repr__(self):
-        return f'X: {self.x_span}; Y: {self.y_span}'
+class GeoDistrict(AbstractDistrict, is_wrap_type=True):
+    part_type = GeoPart
+    cls_abbrev = 'GD'
 
-
-class GeoDistrict(GeoRegion, AbstractDistrict):
-    subregions: list[GeoRegion]
-
-    def __init__(self, name, x_span: tuple | Span = (-1, -1), y_span: tuple | Span = (-1, -1), **kwargs):
-        super().__init__(name, x_span, y_span, **kwargs)
+    def __init__(self, name, **kwargs):
+        super().__init__(name, **kwargs)
 
     @property
     def buildings(self) -> list[GeoRegion]:
         if self.level == 1:
-            return [subregion for subregion in self.subregions if subregion.add_self]
+            return [subregion for subregion in self if subregion.add_self]
         res = []
-        for subregion in self.subregions:
+        for subregion in self:
             assert isinstance(subregion, GeoDistrict), subregion.__class__
             res.extend(subregion.buildings)
         return res
@@ -64,43 +62,33 @@ class GeoDistrict(GeoRegion, AbstractDistrict):
     @property
     def roads(self) -> list[GeoRegion]:
         if self.level == 1:
-            return [subregion for subregion in self.subregions if not subregion.add_self]
+            return [subregion for subregion in self if not subregion.add_self]
         res = []
-        for subregion in self.subregions:
+        for subregion in self:
             assert isinstance(subregion, GeoDistrict)
             res.extend(subregion.roads)
         return res
 
     @property
-    def ports(self) -> list[GeoPort]:
+    def ports(self) -> list[GeoPart]:
         res = []
         for building in self:
             res.extend(building.ports)
         return res
 
-    @staticmethod
-    def _wrapped(target: GeoRegion, stop_level: int) -> 'GeoDistrict':
-        current_target = target
-        index = 0
-        while current_target.level < stop_level:
-            current_target = GeoDistrict(f'Wrapper #{index} of {target.na}', target.x_span,
-                                         target.y_span)(current_target)
-            index += 1
-        return current_target
-
     @classmethod
-    def _get_ports(cls, region1: GeoRegion, region2: GeoRegion) -> tuple[GeoPort, GeoPort]:
+    def _get_ports(cls, region1: GeoRegion, region2: GeoRegion) -> tuple[GeoPart, GeoPart]:
         x_overlapped_span = Span.overlapped_span(region1.x_span, region2.x_span)
         y_overlapped_span = Span.overlapped_span(region1.y_span, region2.y_span)
         cntr_pos = np.array([x_overlapped_span.cntr, y_overlapped_span.cntr])
-        if len(x_overlapped_span) > len(y_overlapped_span):  # vertical
+        if len(y_overlapped_span) == 0:  # vertical
             if region1.y_span.cntr > region2.y_span.cntr:  # region1 on top
                 pos1 = cntr_pos - np.array([0, 1])
                 pos2 = cntr_pos + np.array([0, 1])
             else:  # region2 on top
                 pos1 = cntr_pos + np.array([0, 1])
                 pos2 = cntr_pos - np.array([0, 1])
-        else:  # horizontal
+        elif len(x_overlapped_span) == 0:  # horizontal
             if region1.x_span.cntr > region2.x_span.cntr:  # region1 on the right
                 pos1 = cntr_pos - np.array([1, 0])
                 pos2 = cntr_pos + np.array([1, 0])
@@ -108,15 +96,18 @@ class GeoDistrict(GeoRegion, AbstractDistrict):
                 pos1 = cntr_pos + np.array([1, 0])
                 pos2 = cntr_pos - np.array([1, 0])
 
+        else:  # overlap
+            pos1 = pos2 = cntr_pos
+
         assert pos1 in region2, f'pos: {pos1} is not in region: {region2}'
         assert pos2 in region1, f'pos: {pos2} is not in region: {region1}'
 
-        root_port1 = cls.port_type(f'AP[{region2}->{region1}]', pos1).slaved(master=region1)
-        root_port2 = cls.port_type(f'AP[{region1}->{region2}]', pos2).slaved(master=region2)
+        root_port1 = cls.part_type(f'AP[{region2}->{region1}]', pos1).add_master(master=region1)
+        root_port2 = cls.part_type(f'AP[{region1}->{region2}]', pos2).add_master(master=region2)
 
         return root_port1, root_port2
 
 
 if __name__ == '__main__':
     class _Test:
-        print(GeoDistrict.port_type)
+        print(GeoDistrict.part_type)

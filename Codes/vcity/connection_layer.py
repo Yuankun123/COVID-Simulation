@@ -1,5 +1,5 @@
 """Pure Gold"""
-from tools import red_text
+from Codes.tools import red_text
 import math
 from typing import Iterable
 from collections import OrderedDict
@@ -13,6 +13,7 @@ class AbstractPart:
     cls_abbrev = 'AP'
 
     def __init__(self, name: str, **kwargs):
+        super().__init__(**kwargs)
         self.na = f'{self.cls_abbrev}_{red_text(name)}'
         self.rna = name
         self.level = -1
@@ -39,7 +40,7 @@ class AbstractRegion(AbstractPart):
     masters: list['AbstractDistrict']
 
     def __init__(self, name: str, add_self=True, **kwargs):
-        super(AbstractRegion, self).__init__(name)
+        super(AbstractRegion, self).__init__(name, **kwargs)
         self.add_self = add_self
         self.connect_dict: dict[AbstractProtocol, dict[AbstractRegion: int]] = {}
         self.connected = False  # whether the connection dict has been generated

@@ -1,8 +1,8 @@
 import random
 import time
 import numpy as np
-from tools import Span
-from connection_layer import *
+from Codes.tools import Span
+from Codes.vcity.connection_layer import *
 __all__ = ['GeoPart', 'GeoRegion', 'GeoDistrict']
 
 

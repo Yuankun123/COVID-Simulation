@@ -1,7 +1,6 @@
 """Sample Virtual City"""
-from standard_templates import *
-from geography_layer import *
-
+from Codes.vcity.standard_templates import *
+from Codes.vcity.geography_layer import *
 __all__ = ['Vcity']
 
 
@@ -36,7 +35,6 @@ class Vcity(GeoDistrict):
 
 
 if __name__ == '__main__':
-    from display_support import Displayer
-
+    from Codes.vcity.display_support import Displayer
     Displayer(Vcity(), (0, 350), (0, 320)).refresh()
     Displayer.display(True)

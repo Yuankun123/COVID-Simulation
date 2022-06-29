@@ -1,7 +1,6 @@
 """Standard Elements for Building a Virtual City"""
-from geography_layer import GeoDistrict, GeoRegion
-from tools import Span
-from display_support import Displayer
+from Codes.vcity.geography_layer import GeoDistrict, GeoRegion
+from Codes.tools import Span
 from inspect import signature
 __all__ = ['CityCtor', 'Row', 'Trd', 'Tbd', 'Tsd', 'Rlt']
 
@@ -201,9 +200,10 @@ class Rlt(Element):
 
 
 if __name__ == '__main__':
+    from Codes.vcity.display_support import Displayer
     road_lattice = Trd('1', (5, 5))
     print(road_lattice.all_accessible_names())
     print(road_lattice['L0'])
     print(road_lattice.subparts)
-    Displayer(road_lattice, None, (0, 320), (0, 365)).refresh()
+    Displayer(road_lattice, (0, 320), (0, 365)).refresh()
     Displayer.display(True)

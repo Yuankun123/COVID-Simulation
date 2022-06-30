@@ -288,14 +288,16 @@ class Address:
     def __len__(self):
         return len(self.address)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item) -> 'Address | AbstractRegion':
+        if isinstance(item, slice):
+            return Address(self.address[item])
         return self.address[item]
 
     def __repr__(self):
         return '->'.join([str(region) for region in self.address])
 
     @staticmethod
-    def __find_ports(origin: AbstractRegion, target: AbstractRegion) -> AbstractPart:
+    def __find_ports(origin: AbstractRegion, target: AbstractRegion) -> AbstractPart | None:
         """Find port in the same level"""
         # print(f'From {origin} searching {target.address}')
         assert target != origin
@@ -310,30 +312,16 @@ class Address:
                     min_distance = origin.connect_dict[protocol][target]
                 elif origin.connect_dict[protocol][target] == min_distance:
                     candidates.append(protocol.port_against(origin))
-        assert len(candidates) > 0, f'Origin Address: {origin.address}, level: {origin.level}\n' \
-                                    f'Target Address: {target.address}, level: {target.level}\n'
+        if len(candidates) == 0:
+            return None
         return random.choice(candidates)
 
-    def __primary_diff(self, target: 'Address') -> int:
-        """return the max level of in which self and target diverge"""
-        assert len(self) == len(target)
-        for i in reversed(range(len(self))):
-            if self[i] != target[i]:
-                return i
-
     def find_port(self, target: 'Address') -> AbstractPart:
-        # print(f'Begin Searching: {self} TO {target}')
-        assert len(self) == len(target)
-        diff_level = self.__primary_diff(target)
-        # resolve_history = []
-        current_port = self.__find_ports(self[diff_level], target[diff_level])
-        # resolve_history.append(current_port)
-        while diff_level > 0:
-            assert isinstance(current_port, AbstractRegion)
-            diff_level -= 1
-            current_port = self.__find_ports(self[diff_level], current_port)
-            # resolve_history.append(current_port)
-        return current_port
+        if res := Address.__find_ports(self[0], target[0]):
+            return res
+        temp_port = self[1:].find_port(target[1:])
+        assert isinstance(temp_port, AbstractRegion)
+        return Address.__find_ports(self[0], temp_port)
 
 
 if __name__ == '__main__':
@@ -349,11 +337,4 @@ if __name__ == '__main__':
             (E := AbstractRegion('E')),
             connections=((A, E),)
         )
-
-        for region in host1:
-            print(region.connect_dict)
-            print(region.connected)
-
-        print(host1.connection_info())
-        print(port := super_host['2nd-host1']['A'].find_port(super_host['2nd-host1']['C']))
-        print(port.master)
+        print(super_host['2nd-host1']['C'].find_port(super_host['E']))

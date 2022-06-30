@@ -8,12 +8,8 @@ from tools import rand_rearrange
 display = input('Display?, Y or N')
 
 
-def test_transport_activity(current_time):
-    return 0.1
-
-
 sim = Simulation(time_period=(6 * TIME_CONSTANT, 20 * TIME_CONSTANT), population=300, initial_infected=0,
-                 step_length=5, drift_sigma=3, transport_activity=test_transport_activity, infection_radius=1.8,
+                 step_length=5, drift_sigma=3, infection_radius=1.8,
                  risk=0.01)
 
 # parallel random number generator
@@ -34,7 +30,7 @@ rs.start()
 
 if display == 'Y':
     displayer = Displayer(sim, (0, sim.size[0]), (0, sim.size[1]))
-    for i in range(1000):
+    while sim.current_day < 30:
         sim.progress()
         sim.print_progress_info()
         displayer.refresh()
@@ -42,6 +38,6 @@ if display == 'Y':
     stop = True
     displayer.display(static=True)
 else:
-    for i in range(1000):
+    while sim.current_day < 30:
         sim.progress()
         sim.print_progress_info()

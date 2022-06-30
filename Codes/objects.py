@@ -11,6 +11,17 @@ INFECTED = 'infected'
 TIME_CONSTANT = 360  # 1 hours contains 360 time units
 
 
+class _Debug:
+    @staticmethod
+    def assert_indiv_region(indiv: 'Individual'):
+        if not (indiv.pos in indiv.current_region or indiv.pos in indiv.imagined_current_region):
+            print(f'{indiv.pos}\n'
+                  f'{indiv.current_region.address}\n'
+                  f'{indiv.imagined_current_region.address}\n'
+                  f'{indiv.target.address}')
+            raise RuntimeError('Unexpected Region Location')
+
+
 class IElement(Element):
     """Elements that interact with people"""
 
@@ -42,22 +53,22 @@ class IBuilding(IElement, Building):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        cls.curr_attract = cls.avg_attract(0)
+        cls.curr_attract = cls.type_attract(0)
 
     @staticmethod
-    def avg_attract(current_time) -> float:
+    def type_attract(current_time) -> float:
         raise NotImplementedError
 
     @classmethod
     def update_attract(cls, current_time):
-        cls.curr_attract = cls.avg_attract(current_time)
+        cls.curr_attract = cls.type_attract(current_time)
 
 
 class IResidentialBd(IBuilding, ResidentialBd):
     cls_abbrev = 'IRBd'
 
     @staticmethod
-    def avg_attract(current_time) -> float:
+    def type_attract(current_time) -> float:
         return 1
 
 
@@ -66,7 +77,7 @@ class IBusinessBd(IBuilding, BusinessBd):
     cls_abbrev = 'IBBd'
 
     @staticmethod
-    def avg_attract(current_time) -> float:
+    def type_attract(current_time) -> float:
         return 1
 
 
@@ -74,11 +85,12 @@ class ISquare(IBuilding, Square):
     cls_abbrev = 'ISqr'
 
     @staticmethod
-    def avg_attract(current_time) -> float:
-        if 11 * TIME_CONSTANT <= current_time < 13 * TIME_CONSTANT:
-            return 0.1
+    def type_attract(current_time) -> float:
+        if 7 * TIME_CONSTANT <= current_time < 11 * TIME_CONSTANT or \
+                13 * TIME_CONSTANT <= current_time < 17 * TIME_CONSTANT:
+            return 5
         else:
-            return 10
+            return 0.1
 
 
 ctor = CityCtor()
@@ -101,7 +113,7 @@ class Individual:
         self.pos = home.rand_location()
         self.imagined_current_region: IElement = home  # the location that instructs the individual to move
         self.current_region = home
-        home.add_individual(self)
+        self.home.add_individual(self)
 
         self.sim = sim
         self.target: Optional[IBuilding] = None
@@ -112,20 +124,26 @@ class Individual:
         candidates: list[IBuilding] = [region for region in self.sim.sqrs] + [self.home]
         # TODO the possibility should be computed for each type of building
         weights = [candidate.curr_attract for candidate in candidates]
-        while (res := random.choices(candidates, weights=weights)[0]) == self.current_region:
-            pass
-        return res
+        return random.choices(candidates, weights=weights)[0]
 
     def drift(self):
+        # print('d')
         self.pos += np.array([self.sim.random_nums[self.index], self.sim.random_nums[-self.index]])
         while self.pos not in self.current_region:
+            # print('rd')
             self.pos += unit_vector(self.current_region.cntr - self.pos) * self.sim.step_length
 
     def move(self):
+        # print('m')
         if self.target is None:
             while self.pos not in self.current_region:
                 self.pos += unit_vector(self.current_region.cntr - self.pos) * self.sim.step_length
+
             self.target = self.generate_target()
+            if self.target == self.current_region:
+                self.target = None
+                self.drift()
+                return 'arrived'
             self.target_pos = self.target.rand_location()
             # print('New Target Address:', self.target.address)
 
@@ -144,14 +162,8 @@ class Individual:
             self.pos += step
             # print('step:', step)
 
-        if self.pos in self.target:
-            if self.imagined_current_region != self.target:
-                print((f'Current:{self.current_region}',
-                       f'Imagined:{self.imagined_current_region}',
-                       f'Target:{self.target}',
-                       f'Target protocol: {self.target_port}',
-                       f'Pos:{self.pos}'))
-                raise RuntimeError
+        if self.imagined_current_region == self.target and self.pos in self.target:
+            # the first expression is used to filter out unexpected behaviours (
             if norm(self.pos - self.target_pos) > self.sim.step_length / 2:
                 direction = unit_vector(self.target_pos - self.pos)
                 step = np.round_(direction * self.sim.step_length, decimals=0)
@@ -184,12 +196,11 @@ class Individual:
 
 
 class Crowd:
-    def __init__(self, population: int, initial_infected: int, step_length, drift_sigma, transport_activity):
+    def __init__(self, population: int, initial_infected: int, step_length, drift_sigma):
         self.initial_infected = initial_infected
         self.population = population
         self.step_length = step_length
         self.drift_sigma = drift_sigma
-        self.transport_activity = transport_activity
 
         self.normal_individuals: list[Individual] = []
         self.infected_individuals: list[Individual] = []
@@ -199,29 +210,15 @@ class Crowd:
         self.random_nums = []
         for _ in range(2 * population):
             random.seed(time.perf_counter())
-            self.random_nums.append(random.gauss(0, 3))
+            self.random_nums.append(random.gauss(0, 1))
 
     @property
     def individuals(self):
         return self.normal_individuals + self.infected_individuals
 
-    def move_all(self, current_time):
-        for individual in self.drifting_individuals:
-            individual.drift()
-
-        transport_num = int(self.transport_activity(current_time) * self.population)
-        while len(self.transporting_individuals) < transport_num - len(self.transporting_individuals):
-            random.seed(random.seed(time.perf_counter()))
-            new_indiv = random.choice(self.drifting_individuals)
-            self.transporting_individuals.append(new_indiv)
-            self.drifting_individuals.remove(new_indiv)
-
-        for i, individual in reversed(list(enumerate(self.transporting_individuals))):
-            if individual.move() == 'arrived':
-                self.transporting_individuals.pop(i)
-                self.drifting_individuals.append(individual)
-            else:
-                assert individual.target_pos is not None
+    def move_all(self):
+        for individual in self.individuals:
+            individual.move()
 
 
 class Simulation(Vcity, Crowd):
@@ -231,7 +228,6 @@ class Simulation(Vcity, Crowd):
                  initial_infected: int,  # number of initially infected individuals
                  step_length: float,  # distance traveled per time unit
                  drift_sigma: float,  # stdev for drifting
-                 transport_activity,  # percent of population transporting among regions in a given time unit (func)
                  infection_radius: float,
                  risk: float,
                  ):
@@ -241,8 +237,7 @@ class Simulation(Vcity, Crowd):
         super().__init__(population=population,
                          initial_infected=initial_infected,
                          step_length=step_length,
-                         drift_sigma=drift_sigma,
-                         transport_activity=transport_activity)
+                         drift_sigma=drift_sigma)
         self.initiate_individuals()
 
     def initiate_individuals(self):
@@ -264,12 +259,17 @@ class Simulation(Vcity, Crowd):
         ISquare.update_attract(self.current_time)
 
         # move
-        self.move_all(self.current_time)
+        self.move_all()
         # update infection state
         '''for region in self.regions:
             region.update_infected(self)'''
 
     def print_progress_info(self):
         if self.current_time % TIME_CONSTANT == 0:
-            print(f'\nDay{self.current_day} {self.current_time // TIME_CONSTANT}:00')
+            print(f'\nDay {self.current_day} {self.current_time // TIME_CONSTANT}:00\n'
+                  f'Rbd: {IResidentialBd.curr_attract}\n'
+                  f'BBd: {IBusinessBd.curr_attract}\n'
+                  f'Sq: {ISquare.curr_attract}')
         print(f'\r{len(self.infected_individuals)}', end='')
+
+

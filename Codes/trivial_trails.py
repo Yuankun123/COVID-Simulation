@@ -2,15 +2,13 @@
 
 
 class A:
-    a = []
+    def __init__(self, k: list):
+        self.k = k
 
-    def __init_subclass__(cls, **kwargs):
-        cls.a = []
-
-
-class B(A):
-    pass
+    def __getitem__(self, item):
+        print(item)
+        return self.k[item]
 
 
-B.a.append(0)
-print(A.a, B.a)
+a = A([1, 2, 3, 4])
+print(a[1:3])

@@ -29,7 +29,7 @@ class GeoRegion(AbstractRegion):
         self.sw_pos = np.array([self.x_span.start, self.y_span.start])
         self.cntr = np.array([self.x_span.cntr, self.y_span.cntr])
 
-    def __contains__(self, pos: np.ndarray):
+    def __contains__(self, pos: np.ndarray | tuple):
         return pos[0] in self.x_span and pos[1] in self.y_span
 
     def rand_location(self) -> np.ndarray:
@@ -39,7 +39,8 @@ class GeoRegion(AbstractRegion):
         res = (random.gauss(x_mu, x_sigma), random.gauss(y_mu, y_sigma))
         while res not in self:
             res = (random.gauss(x_mu, x_sigma), random.gauss(y_mu, y_sigma))
-        return np.array(np.round_(res))
+        assert res in self
+        return np.array(res)
 
 
 class GeoDistrict(AbstractDistrict, is_wrap_type=True):

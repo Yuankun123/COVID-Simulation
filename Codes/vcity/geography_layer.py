@@ -50,26 +50,6 @@ class GeoDistrict(AbstractDistrict, is_wrap_type=True):
         super().__init__(name, **kwargs)
 
     @property
-    def buildings(self) -> list[GeoRegion]:
-        if self.level == 1:
-            return [subregion for subregion in self if subregion.add_self]
-        res = []
-        for subregion in self:
-            assert isinstance(subregion, GeoDistrict), subregion.__class__
-            res.extend(subregion.buildings)
-        return res
-
-    @property
-    def roads(self) -> list[GeoRegion]:
-        if self.level == 1:
-            return [subregion for subregion in self if not subregion.add_self]
-        res = []
-        for subregion in self:
-            assert isinstance(subregion, GeoDistrict)
-            res.extend(subregion.roads)
-        return res
-
-    @property
     def ports(self) -> list[GeoPart]:
         res = []
         for building in self:
@@ -83,27 +63,27 @@ class GeoDistrict(AbstractDistrict, is_wrap_type=True):
         cntr_pos = np.array([x_overlapped_span.cntr, y_overlapped_span.cntr])
         if len(y_overlapped_span) == 0:  # vertical
             if region1.y_span.cntr > region2.y_span.cntr:  # region1 on top
-                pos1 = cntr_pos - np.array([0, 1])
-                pos2 = cntr_pos + np.array([0, 1])
-            else:  # region2 on top
                 pos1 = cntr_pos + np.array([0, 1])
                 pos2 = cntr_pos - np.array([0, 1])
+            else:  # region2 on top
+                pos1 = cntr_pos - np.array([0, 1])
+                pos2 = cntr_pos + np.array([0, 1])
         elif len(x_overlapped_span) == 0:  # horizontal
             if region1.x_span.cntr > region2.x_span.cntr:  # region1 on the right
-                pos1 = cntr_pos - np.array([1, 0])
-                pos2 = cntr_pos + np.array([1, 0])
-            else:  # region2 on the right
                 pos1 = cntr_pos + np.array([1, 0])
                 pos2 = cntr_pos - np.array([1, 0])
+            else:  # region2 on the right
+                pos1 = cntr_pos - np.array([1, 0])
+                pos2 = cntr_pos + np.array([1, 0])
 
         else:  # overlap
             pos1 = pos2 = cntr_pos
 
-        assert pos1 in region2, f'pos: {pos1} is not in region: {region2}'
-        assert pos2 in region1, f'pos: {pos2} is not in region: {region1}'
+        assert pos1 in region1, f'pos: {pos1} is not in region: {region1}'
+        assert pos2 in region2, f'pos: {pos2} is not in region: {region2}'
 
-        root_port1 = cls.part_type(f'AP[{region2}->{region1}]', pos1).add_master(master=region1)
-        root_port2 = cls.part_type(f'AP[{region1}->{region2}]', pos2).add_master(master=region2)
+        root_port1 = cls.part_type(f'[{region2}->{region1}]', pos1).add_master(master=region1)
+        root_port2 = cls.part_type(f'[{region1}->{region2}]', pos2).add_master(master=region2)
 
         return root_port1, root_port2
 

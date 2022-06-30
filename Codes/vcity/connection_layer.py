@@ -96,9 +96,9 @@ class AbstractRegion(AbstractPart):
             pass
             # print(f'{self} already has connection dict')
 
-        res = {}
-        if self.add_self:
-            res = {self: 0}
+        # res = {}
+        # if self.add_self:
+        res = {self: 0}
         for protocol in self.protocols:
             if protocol != origin:
                 for region, distance in self.connect_dict[protocol].items():
@@ -221,7 +221,8 @@ class AbstractDistrict(AbstractRegion, _SelfReferenceHelper, is_wrap_type=True):
         max_level = max([new_subregion.level for new_subregion in new_subregions])
         for new_subregion in new_subregions:
             if new_subregion.rna in self.direct_subregions.keys():
-                warnings.warn(f'Name {new_subregion.rna} already exists in {self}. It is overridden', RuntimeWarning)
+                warnings.warn(f'Name {new_subregion.rna} already exists in {self}, which'
+                              f'contains {self.direct_subregions.keys()}. It is overridden', RuntimeWarning)
             self.direct_subregions[new_subregion.rna] = new_subregion
 
             wrapped_subregion = self._wrapped(new_subregion, max_level)
@@ -282,7 +283,6 @@ class AbstractDistrict(AbstractRegion, _SelfReferenceHelper, is_wrap_type=True):
 class Address:
     """An address is a series of regions, from smallest to largest"""
     def __init__(self, region_hierarchy: list[AbstractRegion]):
-        assert region_hierarchy[0].level == 0
         self.address = region_hierarchy
 
     def __len__(self):
@@ -297,14 +297,21 @@ class Address:
     @staticmethod
     def __find_ports(origin: AbstractRegion, target: AbstractRegion) -> AbstractPart:
         """Find port in the same level"""
+        # print(f'From {origin} searching {target.address}')
         assert target != origin
-        assert target.level == origin.level
+        assert target.level == origin.level, f'{origin} has level {origin.level} but ' \
+                                             f'{target} has level {target.level}'
         candidates: list[AbstractPart] = []
         min_distance = math.inf
         for protocol in origin.protocols:
-            if target in origin.connect_dict[protocol].keys() and origin.connect_dict[protocol][target] <= min_distance:
-                candidates.append(protocol.port_against(origin))
-                min_distance = origin.connect_dict[protocol][target]
+            if target in origin.connect_dict[protocol].keys():
+                if origin.connect_dict[protocol][target] < min_distance:
+                    candidates = [protocol.port_against(origin)]
+                    min_distance = origin.connect_dict[protocol][target]
+                elif origin.connect_dict[protocol][target] == min_distance:
+                    candidates.append(protocol.port_against(origin))
+        assert len(candidates) > 0, f'Origin Address: {origin.address}, level: {origin.level}\n' \
+                                    f'Target Address: {target.address}, level: {target.level}\n'
         return random.choice(candidates)
 
     def __primary_diff(self, target: 'Address') -> int:
@@ -315,12 +322,17 @@ class Address:
                 return i
 
     def find_port(self, target: 'Address') -> AbstractPart:
-        """"""
+        # print(f'Begin Searching: {self} TO {target}')
+        assert len(self) == len(target)
         diff_level = self.__primary_diff(target)
+        # resolve_history = []
         current_port = self.__find_ports(self[diff_level], target[diff_level])
-        while isinstance(current_port, AbstractRegion):
+        # resolve_history.append(current_port)
+        while diff_level > 0:
+            assert isinstance(current_port, AbstractRegion)
             diff_level -= 1
             current_port = self.__find_ports(self[diff_level], current_port)
+            # resolve_history.append(current_port)
         return current_port
 
 
@@ -343,6 +355,5 @@ if __name__ == '__main__':
             print(region.connected)
 
         print(host1.connection_info())
-        print(Address.find_port(super_host['2nd-host1']['A'].address, super_host['2nd-host1']['C'].address))
-        print(super_host['2nd-host1']['A'].address)
-        print(super_host['2nd-host1']['C'].address)
+        print(port := super_host['2nd-host1']['A'].find_port(super_host['2nd-host1']['C']))
+        print(port.master)

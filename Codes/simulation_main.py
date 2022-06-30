@@ -1,4 +1,4 @@
-from objects import Simulation, TIME_CONSTANT
+from objects import TIME_CONSTANT
 from tools import rand_rearrange
 import matplotlib.pyplot as plt
 import random

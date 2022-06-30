@@ -1,145 +1,23 @@
-import random
 import time
-import threading
+import random
 import numpy as np
-from tools import unit_vector, norm, Span
-from connection_layer import AbstractRegion, AbstractProtocol
+from typing import Optional
+
+from tools import unit_vector, norm
+from vcity import Vcity, CityCtor, Element, Road, Building, ResidentialBd, BusinessBd, Square, GeoPart
+
 NORMAL = 'normal'
 INFECTED = 'infected'
 TIME_CONSTANT = 360  # 1 hours contains 360 time units
 
 
-class Protocol(AbstractProtocol):
-    def __init__(self, region1, region2, pos):
-        super().__init__(region1, region2)
-        self.pos = pos
+class IElement(Element):
+    """Elements that interact with people"""
 
-
-class Region(AbstractRegion):
-    @staticmethod
-    def pale_attractiveness(current_time):
-        return 0
-    
-    """Every region is a parallelogram"""
-    def __init__(self, region_name: str,
-                 vcity: 'VirtualCity',
-                 anchor1: np.ndarray,
-                 extend_len: int,
-                 extend_dir='horizontal',
-                 anchor_mode='corner',
-                 anchor2: np.ndarray = None,
-                 targetable=True,
-                 attract_func=None):
-        """
-        :param region_name: name of the region
-        :param vcity: virtual city the region belongs to
-        :param anchor1: anchor1 position
-        :param extend_len: extend length
-        :param extend_dir: horizontal or vertical
-        :param anchor_mode: anchor's position related to the region, 'corner' or 'edge'
-        :param anchor2: anchor2 position
-        :param targetable: whether this region can become a target of transportation
-        """
-        super().__init__(region_name, targetable)
-        self.vcity = vcity
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.normal_individuals: list[Individual] = []
         self.infected_individuals: list[Individual] = []
-        self.attract_func = attract_func if attract_func else Region.pale_attractiveness
-        self.attractiveness = self.attract_func(0)
-
-        # configure the parallelogram region
-        assert anchor_mode in ['corner', 'edge'], f'Bad parameter {anchor_mode} for anchor_mode'
-        assert extend_dir in ['horizontal', 'vertical'], f'Bad parameter {extend_dir} for extend_dir'
-        assert anchor1[0] <= anchor2[0] and anchor1[1] <= anchor2[1], f'{anchor1} is not on the lower left of {anchor2}'
-        assert extend_len % 2 == 0, f'Extend length should be a even number'
-
-        if anchor_mode == 'edge':
-            if extend_dir == 'horizontal':
-                sw_corner = anchor1 - np.array([extend_len / 2, 0])
-            else:
-                sw_corner = anchor1 - np.array([0, extend_len / 2])
-        else:
-            sw_corner = anchor1
-        self.extend_dir = extend_dir
-        self.extend_len = extend_len
-
-        if extend_dir == 'horizontal':
-            assert anchor2[1] != anchor1[1], 'Cannot extend horizontally because the anchors have the same y'
-            self.main_dir_span = Span(anchor1[1], anchor2[1])
-            ratio = (anchor2[0] - anchor1[0]) / self.main_dir_span.span
-            self.get_subdir_span = lambda y: Span((y - sw_corner[1]) * ratio + sw_corner[0],
-                                                  (y - sw_corner[1]) * ratio + sw_corner[0] + self.extend_len)
-            main_cntr = self.main_dir_span.cntr
-            self.cntr = np.array(self.get_subdir_span(main_cntr).cntr, main_cntr)
-        else:
-            assert anchor2[0] != anchor1[0], 'Cannot extend vertically because the anchors have the same x'
-            self.main_dir_span = Span(anchor1[0], anchor2[0])
-            ratio = (anchor2[1] - anchor1[1]) / self.main_dir_span.span
-            self.get_subdir_span = lambda x: Span((x - sw_corner[0]) * ratio + sw_corner[1],
-                                                  (x - sw_corner[0]) * ratio + sw_corner[1] + self.extend_len)
-            main_cntr = self.main_dir_span.cntr
-            self.cntr = np.array(main_cntr, self.get_subdir_span(main_cntr).cntr)
-
-    def __contains__(self, pos: np.ndarray):
-        if self.extend_dir == 'horizontal':
-            if pos[1] in self.main_dir_span and pos[0] in self.get_subdir_span(pos[1]):
-                return True
-            else:
-                return False
-        else:
-            if pos[0] in self.main_dir_span and pos[1] in self.get_subdir_span(pos[0]):
-                return True
-            else:
-                return False
-
-    def adjacent(self, pos: np.ndarray):
-        """include both ends"""
-        if self.extend_dir == 'horizontal':
-            if self.main_dir_span.adjacent(pos[1]) and self.get_subdir_span(pos[1]).adjacent(pos[0]):
-                return True
-            else:
-                return False
-        else:
-            if self.main_dir_span.adjacent(pos[0]) and self.get_subdir_span(pos[0]).adjacent(pos[1]):
-                return True
-            else:
-                return False
-
-    def rand_location(self) -> np.ndarray:
-        main_sigma = self.main_dir_span.span / 6
-        main_mu = self.main_dir_span.cntr
-        random.seed(time.perf_counter())
-        main_val = random.gauss(main_mu, main_sigma)
-        while main_val not in self.main_dir_span:
-            main_val = random.gauss(main_mu, main_sigma)
-            
-        current_sub_span = self.get_subdir_span(main_val)
-        sub_sigma = current_sub_span.span / 6
-        sub_mu = current_sub_span.cntr
-        random.seed(time.perf_counter())
-        sub_val = random.gauss(sub_mu, sub_sigma)
-        while sub_val not in current_sub_span:
-            sub_val = random.gauss(sub_mu, sub_sigma)
-        
-        if self.extend_dir == 'horizontal':
-            return np.array(sub_val, main_val)
-        else:
-            return np.array(main_val, sub_val)
-    
-    def update_attractiveness(self, current_time):
-        self.attractiveness = self.attract_func(current_time)
-
-    def update_infected(self, virus: 'Virus'):
-        for individual1 in self.infected_individuals:
-            for individual2 in self.normal_individuals:
-                if norm(individual1.pos - individual2.pos) < virus.infection_radius:
-                    random.seed(time.perf_counter())
-                    individual2.infected_state = random.choices([INFECTED, NORMAL], cum_weights=[virus.risk, 1])[0]
-                    if individual2.infected_state == INFECTED:
-                        individual2.crowd.normal_individuals.remove(individual2)
-                        individual2.crowd.infected_individuals.append(individual2)
-                        self.normal_individuals.remove(individual2)
-                        self.infected_individuals.append(individual2)
 
     def add_individual(self, indiv: 'Individual'):
         if indiv.infected_state == NORMAL:
@@ -154,10 +32,63 @@ class Region(AbstractRegion):
             self.infected_individuals.remove(indiv)
 
 
+class IRoad(IElement, Road):
+    cls_abbrev = 'IRd'
+
+
+class IBuilding(IElement, Building):
+    cls_abbrev = 'IBd'
+    curr_attract: float
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.curr_attract = cls.avg_attract(0)
+
+    @staticmethod
+    def avg_attract(current_time) -> float:
+        raise NotImplementedError
+
+    @classmethod
+    def update_attract(cls, current_time):
+        cls.curr_attract = cls.avg_attract(current_time)
+
+
+class IResidentialBd(IBuilding, ResidentialBd):
+    cls_abbrev = 'IRBd'
+
+    @staticmethod
+    def avg_attract(current_time) -> float:
+        return 1
+
+
+# currently not used
+class IBusinessBd(IBuilding, BusinessBd):
+    cls_abbrev = 'IBBd'
+
+    @staticmethod
+    def avg_attract(current_time) -> float:
+        return 1
+
+
+class ISquare(IBuilding, Square):
+    cls_abbrev = 'ISqr'
+
+    @staticmethod
+    def avg_attract(current_time) -> float:
+        if 11 * TIME_CONSTANT <= current_time < 13 * TIME_CONSTANT:
+            return 0.1
+        else:
+            return 10
+
+
+ctor = CityCtor()
+ctor.configure(road=IRoad, rbd=IResidentialBd, bbd=IBusinessBd, sqr=ISquare)
+
+
 class Individual:
     index = 0
 
-    def __init__(self, home: Region, crowd: 'Crowd', infected=False):
+    def __init__(self, home: IResidentialBd, sim: 'Simulation', infected=False):
         if infected:
             self.infected_state = INFECTED
         else:
@@ -168,110 +99,91 @@ class Individual:
 
         self.home = home
         self.pos = home.rand_location()
-        self.imagined_current_region: Region = home  # the quasi-current-location that instructs the individual to move
+        self.imagined_current_region: IElement = home  # the location that instructs the individual to move
         self.current_region = home
         home.add_individual(self)
 
-        self.crowd = crowd
-        self.target = None
-        self.target_protocol = None  # temperate protocol
+        self.sim = sim
+        self.target: Optional[IBuilding] = None
+        self.target_port = None  # temperate protocol
+        self.target_pos: Optional[np.ndarray] = None  # a specific position in target region
 
-    def generate_target(self):
-        # noinspection PyTypeChecker
-        candidates: list[Region] = [region for region in self.crowd.non_residential_buildings.values()] + \
-                                     [self.home]
-        weights = [candidate.attractiveness for candidate in candidates]
+    def generate_target(self) -> IBuilding:
+        candidates: list[IBuilding] = [region for region in self.sim.sqrs] + [self.home]
+        # TODO the possibility should be computed for each type of building
+        weights = [candidate.curr_attract for candidate in candidates]
         while (res := random.choices(candidates, weights=weights)[0]) == self.current_region:
             pass
         return res
 
     def drift(self):
-        self.pos += np.array([self.crowd.random_nums[self.index], self.crowd.random_nums[-self.index]])
-        if self.target is None:
-            self.pos += unit_vector(self.current_region.cntr - self.pos) * self.crowd.step_length
+        self.pos += np.array([self.sim.random_nums[self.index], self.sim.random_nums[-self.index]])
+        while self.pos not in self.current_region:
+            self.pos += unit_vector(self.current_region.cntr - self.pos) * self.sim.step_length
 
     def move(self):
         if self.target is None:
             while self.pos not in self.current_region:
-                self.pos += unit_vector(self.current_region.cntr - self.pos) * self.crowd.step_length
+                self.pos += unit_vector(self.current_region.cntr - self.pos) * self.sim.step_length
             self.target = self.generate_target()
-            self.target_protocol = self.current_region.find_protocol(self.target)
-            self.imagined_current_region = self.target_protocol.other_side(self.current_region)
+            self.target_pos = self.target.rand_location()
+            # print('New Target Address:', self.target.address)
+
+            self.target_port = self.current_region.find_port(self.target)
+            self.imagined_current_region = self.target_port.master
+            assert isinstance(self.target_port, GeoPart)
+            assert isinstance(self.imagined_current_region, IElement)
+
+            # print('Next Port:', self.target_port)
+            # print('Port Position', self.target_port.pos)
 
         # move
         if self.pos not in self.imagined_current_region:
-            direction = unit_vector(self.target_protocol.pos - self.pos)
-            self.pos += np.round_(direction * self.crowd.step_length, decimals=0)
+            direction = unit_vector(self.target_port.pos - self.pos)
+            step = np.round_(direction * self.sim.step_length, decimals=0)
+            self.pos += step
+            # print('step:', step)
 
         if self.pos in self.target:
-            assert self.imagined_current_region == self.target, (f'Current:{self.current_region}',
-                                                                 f'Imagined:{self.imagined_current_region}',
-                                                                 f'Target:{self.target}',
-                                                                 f'Target protocol: {self.target_protocol}',
-                                                                 f'Pos:{self.pos}')
-            self.current_region.remove_individual(self)
-            self.imagined_current_region.add_individual(self)
-            self.current_region = self.imagined_current_region
-            self.target = None
-            return 'arrived'
+            if self.imagined_current_region != self.target:
+                print((f'Current:{self.current_region}',
+                       f'Imagined:{self.imagined_current_region}',
+                       f'Target:{self.target}',
+                       f'Target protocol: {self.target_port}',
+                       f'Pos:{self.pos}'))
+                raise RuntimeError
+            if norm(self.pos - self.target_pos) > self.sim.step_length / 2:
+                direction = unit_vector(self.target_pos - self.pos)
+                step = np.round_(direction * self.sim.step_length, decimals=0)
+                self.pos += step
+                # print('step:', step)
+                return
+            else:
+                self.current_region.remove_individual(self)
+                self.imagined_current_region.add_individual(self)
+                self.current_region = self.imagined_current_region
+                self.target = None
+                self.target_pos = None
+                return 'arrived'
 
         if self.pos in self.imagined_current_region:
             self.current_region.remove_individual(self)
             self.imagined_current_region.add_individual(self)
             self.current_region = self.imagined_current_region
 
-            self.target_protocol = self.current_region.find_protocol(self.target)
-            self.imagined_current_region = self.target_protocol.other_side(self.current_region)
-            # print('Current target:', self.target_protocol.pos)
+            self.target_port = self.current_region.find_port(self.target)
+            self.imagined_current_region = self.target_port.master
+            assert isinstance(self.target_port, GeoPart)
+            assert isinstance(self.imagined_current_region, IElement)
 
+            # print('Next Port:', self.target_port)
+            # print('Port Position', self.target_port.pos)
 
-class VirtualCity:
-    def __init__(self, size):
-        self.size = size
-        self.residential_buildings: dict[str, Region] = {}
-        self.non_residential_buildings: dict[str, Region] = {}
-        self.roads: list[Region] = []
-
-    @property
-    def buildings(self) -> dict[str, Region]:
-        return {**self.non_residential_buildings, **self.residential_buildings}
-
-    @property
-    def regions(self) -> list[Region]:
-        # noinspection PyTypeChecker
-        return list(self.buildings.values()) + self.roads
-
-    def build_road(self, port_dict: dict[str, tuple[int, int]], width, direction):
-        for building_na, pos in port_dict.items():
-            assert building_na in self.buildings.keys()
-            building = self.buildings[building_na]
-            assert building.adjacent(np.array(pos)), \
-                f'{building_na} cannot be connected on {pos}'
-
-        building_na1, building_na2 = port_dict.keys()
-        building1, building2 = self.buildings[building_na1], self.buildings[building_na2]
-        new_road = Region(f'R({building_na1}-{building_na2})', self, )
-        self.roads.append(new_road)
-
-    def add_building(self, name, loc: tuple, size, r_type):
-        if r_type == 'R':
-            self.residential_buildings[name] = Region(name, size, np.array(loc), self)
-        if r_type == 'T':
-            self.non_residential_buildings[name] = Region(name, size, np.array(loc), self)
-
-    def finish_construction(self):
-        threads = []
-        for region in self.regions:
-            threads.append(threading.Thread(target=region.finish_construction))
-            threads[-1].start()
-        for thread in threads:
-            thread.join()
+        # print('Current Address:', self.current_region.address)
+        # print('Self Position', self.pos)
 
 
 class Crowd:
-    residential_buildings: dict[str, Region]
-    non_residential_buildings: dict[str, Region]
-
     def __init__(self, population: int, initial_infected: int, step_length, drift_sigma, transport_activity):
         self.initial_infected = initial_infected
         self.population = population
@@ -282,6 +194,7 @@ class Crowd:
         self.normal_individuals: list[Individual] = []
         self.infected_individuals: list[Individual] = []
         self.transporting_individuals: list[Individual] = []
+        self.drifting_individuals: list[Individual] = []
 
         self.random_nums = []
         for _ in range(2 * population):
@@ -292,53 +205,52 @@ class Crowd:
     def individuals(self):
         return self.normal_individuals + self.infected_individuals
 
-    def initiate_individuals(self):
-        for _ in range(self.population - self.initial_infected):
-            self.normal_individuals.append(Individual(random.choice(list(self.residential_buildings.values())), self))
-        for _ in range(self.initial_infected):
-            self.infected_individuals.append(Individual(random.choice(list(self.residential_buildings.values())), self,
-                                                        True))
-
     def move_all(self, current_time):
-        for individual in self.individuals:
+        for individual in self.drifting_individuals:
             individual.drift()
+
         transport_num = int(self.transport_activity(current_time) * self.population)
-        self.transporting_individuals.extend(
-            random.choices(self.individuals, k=transport_num - len(self.transporting_individuals))
-        )
-        for i, individual in enumerate(self.transporting_individuals):
+        while len(self.transporting_individuals) < transport_num - len(self.transporting_individuals):
+            random.seed(random.seed(time.perf_counter()))
+            new_indiv = random.choice(self.drifting_individuals)
+            self.transporting_individuals.append(new_indiv)
+            self.drifting_individuals.remove(new_indiv)
+
+        for i, individual in reversed(list(enumerate(self.transporting_individuals))):
             if individual.move() == 'arrived':
                 self.transporting_individuals.pop(i)
+                self.drifting_individuals.append(individual)
+            else:
+                assert individual.target_pos is not None
 
 
-class Virus:
-    def __init__(self, infection_radius, risk):
-        self.infection_radius = infection_radius
-        self.risk = risk
-
-
-class Simulation(VirtualCity, Crowd, Virus):
+class Simulation(Vcity, Crowd):
     def __init__(self,
-                 time_period: tuple,     # period of time in a day that we simulate (in unit)
-                 size: int,              # size of the virtual city
-                 population: int,        # population of this simulation
+                 time_period: tuple,  # period of time in a day that we simulate (in unit)
+                 population: int,  # population of this simulation
                  initial_infected: int,  # number of initially infected individuals
-                 step_length: float,     # distance traveled per time unit
-                 drift_sigma: float,     # stdev for drifting
-                 transport_activity,     # percent of population transporting among regions in a given time unit (func)
+                 step_length: float,  # distance traveled per time unit
+                 drift_sigma: float,  # stdev for drifting
+                 transport_activity,  # percent of population transporting among regions in a given time unit (func)
                  infection_radius: float,
                  risk: float,
                  ):
         self.current_time = 0
         self.current_day = 0
         self.time_period = time_period
-        VirtualCity.__init__(self, size)
-        Crowd.__init__(self, population, initial_infected, step_length, drift_sigma, transport_activity)
-        Virus.__init__(self, infection_radius, risk)
-
-    def finish_construction(self):
-        VirtualCity.finish_construction(self)
+        super().__init__(population=population,
+                         initial_infected=initial_infected,
+                         step_length=step_length,
+                         drift_sigma=drift_sigma,
+                         transport_activity=transport_activity)
         self.initiate_individuals()
+
+    def initiate_individuals(self):
+        for _ in range(self.population - self.initial_infected):
+            self.normal_individuals.append(Individual(random.choice(self.rbds), self))
+        for _ in range(self.initial_infected):
+            self.infected_individuals.append(Individual(random.choice(self.rbds), self, True))
+        self.drifting_individuals = self.individuals
 
     def progress(self):
         if self.current_time not in range(*self.time_period):
@@ -348,25 +260,16 @@ class Simulation(VirtualCity, Crowd, Virus):
             self.current_time += 1
 
         # update attractiveness
-        for building in self.buildings.values():
-            building.update_attractiveness(self.current_time)
+        IResidentialBd.update_attract(self.current_time)
+        ISquare.update_attract(self.current_time)
+
         # move
         self.move_all(self.current_time)
         # update infection state
-        for region in self.regions:
-            region.update_infected(self)
+        '''for region in self.regions:
+            region.update_infected(self)'''
 
-
-if __name__ == '__main__':
-    class _Test:
-        A = Region('A', None)
-        B = Region('B', None)
-        C = Region('C', None)
-        D = Region('D', None)
-        Region.connect(A, B, np.array((0, 0)))
-        Region.connect(B, C, np.array((0, 0)))
-        Region.connect(C, D, np.array((0, 0)))
-        Region.connect(D, A, np.array((0, 0)))
-        for region in [A, B, C, D]:
-            region.finish_construction()
-        print(A.guidance_dict)
+    def print_progress_info(self):
+        if self.current_time % TIME_CONSTANT == 0:
+            print(f'\nDay{self.current_day} {self.current_time // TIME_CONSTANT}:00')
+        print(f'\r{len(self.infected_individuals)}', end='')

@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from Codes.vcity.geography_layer import GeoDistrict
+from Codes.vcity.compound import Compound
 from typing import Iterable
 __all__ = ['Displayer']
 
@@ -7,7 +7,7 @@ __all__ = ['Displayer']
 class Displayer:
     index = 0
 
-    def __init__(self, target: GeoDistrict, x_span: Iterable, y_span: Iterable):
+    def __init__(self, target: Compound, x_span: Iterable, y_span: Iterable):
         self.name = target.rna
         self.target = target
         self.index = Displayer.index
@@ -25,12 +25,18 @@ class Displayer:
     def refresh(self):
         plt.figure(self.index)
         axes = plt.gca()
+        plt.cla()
         target = self.target
 
-        for region in target.buildings:
+        for region in target.rbds:
             axes.add_artist(plt.Rectangle(xy=tuple(region.sw_pos), width=len(region.x_span), height=len(region.y_span),
                                           fill=True, facecolor='blue', alpha=0.2, edgecolor='black'))
-        for road in target.roads:
+
+        for sqr in target.sqrs:
+            axes.add_artist(plt.Rectangle(xy=tuple(sqr.sw_pos), width=len(sqr.x_span), height=len(sqr.y_span),
+                                          fill=True, facecolor='#3fb24d', edgecolor='black'))
+
+        for road in target.rds:
             axes.add_artist(plt.Rectangle(xy=tuple(road.sw_pos), width=len(road.x_span), height=len(road.y_span),
                                           fill=True, facecolor='#e3d1d1', edgecolor='black'))
 

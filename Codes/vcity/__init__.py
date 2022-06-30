@@ -1,5 +1,5 @@
 from Codes.vcity.geography_layer import *
-from Codes.vcity.standard_templates import CityCtor
+from Codes.vcity.elements import *
 from Codes.vcity.compound import Vcity
 from Codes.vcity.display_support import Displayer
 

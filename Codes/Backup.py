@@ -235,18 +235,6 @@ class Region(AbstractRegion):
     def update_attractiveness(self, current_time):
         self.attractiveness = self.attract_func(current_time)
 
-    def update_infected(self, virus: 'Virus'):
-        for individual1 in self.infected_individuals:
-            for individual2 in self.normal_individuals:
-                if norm(individual1.pos - individual2.pos) < virus.infection_radius:
-                    random.seed(time.perf_counter())
-                    individual2.infected_state = random.choices([INFECTED, NORMAL], cum_weights=[virus.risk, 1])[0]
-                    if individual2.infected_state == INFECTED:
-                        individual2.crowd.normal_individuals.remove(individual2)
-                        individual2.crowd.infected_individuals.append(individual2)
-                        self.normal_individuals.remove(individual2)
-                        self.infected_individuals.append(individual2)
-
     def add_individual(self, indiv: 'Individual'):
         if indiv.infected_state == NORMAL:
             self.normal_individuals.append(indiv)

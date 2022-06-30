@@ -1,4 +1,6 @@
-from objects import TIME_CONSTANT
+"""Deprecated"""
+
+'''from objects import TIME_CONSTANT
 from tools import rand_rearrange
 import matplotlib.pyplot as plt
 import random
@@ -126,3 +128,4 @@ else:
         sim.progress()
         sim.progress_info()
 stop = True
+'''

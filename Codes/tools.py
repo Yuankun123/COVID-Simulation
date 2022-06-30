@@ -3,6 +3,7 @@ import random
 import time
 import numpy as np
 
+
 class Span:
     def __init__(self, start: float = 0, stop: float = 0, _len: int = None):
         if _len:

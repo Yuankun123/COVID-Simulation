@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 from Codes.vcity.compound import Compound
 from typing import Iterable
 __all__ = ['Displayer']
@@ -11,26 +12,29 @@ class Displayer:
         self.name = target.rna
         self.target = target
         self.index = Displayer.index
+        self.x_span = x_span
+        self.y_span = y_span
         Displayer.index += 1
 
-        plt.ion()
-        plt.figure(self.index, figsize=(10, 10), dpi=80)
-        plt.title(self.name)
-        axes = plt.gca()
-        axes.set_aspect(1)
+        self.figure: plt.Figure = plt.figure(self.index, figsize=(10, 10), dpi=80)
+        self.axes: plt.Axes = self.figure.add_axes([0, 0.05, 1, 0.90])
 
-        plt.xlim(*x_span)
-        plt.ylim(*y_span)
+    def __set_up(self):
+        self.axes.cla()
+        self.axes.set_aspect('equal')
+        self.axes.set_title(self.name)
+        self.axes.set_xlim(*self.x_span)
+        self.axes.set_ylim(*self.y_span)
 
     def refresh(self):
-        plt.figure(self.index)
-        axes = plt.gca()
-        plt.cla()
+        self.__set_up()
+        axes = self.axes
         target = self.target
 
         for region in target.rbds:
-            axes.add_artist(plt.Rectangle(xy=tuple(region.sw_pos), width=len(region.x_span), height=len(region.y_span),
-                                          fill=True, facecolor='blue', alpha=0.2, edgecolor='black'))
+            axes.add_patch(patches.Rectangle(xy=tuple(region.sw_pos), width=len(region.x_span),
+                                             height=len(region.y_span), fill=True, facecolor='blue',
+                                             alpha=0.2, edgecolor='black'))
 
         for sqr in target.sqrs:
             axes.add_artist(plt.Rectangle(xy=tuple(sqr.sw_pos), width=len(sqr.x_span), height=len(sqr.y_span),
@@ -40,13 +44,13 @@ class Displayer:
             axes.add_artist(plt.Rectangle(xy=tuple(road.sw_pos), width=len(road.x_span), height=len(road.y_span),
                                           fill=True, facecolor='#e3d1d1', edgecolor='black'))
 
-        plt.scatter(x=[port.pos[0] for port in target.ports],
-                    y=[port.pos[1] for port in target.ports],
-                    marker='x')
+        '''axes.scatter(x=[port.pos[0] for port in target.ports],
+                     y=[port.pos[1] for port in target.ports],
+                     marker='x')'''
 
     @staticmethod
     def display(static=False):
         if static:
-            plt.pause(10000)
+            plt.pause(100000)
         else:
             plt.pause(0.0001)

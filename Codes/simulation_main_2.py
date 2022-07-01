@@ -2,11 +2,13 @@ import time
 import random
 import math
 import threading
+from moviepy.editor import VideoClip
+from moviepy.video.io.bindings import mplfig_to_npimage
 
 from objects import Simulation, TIME_CONSTANT
 from display_support import Displayer
 from tools import rand_rearrange
-display = input('Display?, Y or N')
+mode = input('\'D\' for displaying\n\'R\'for recording\n\'P\'for printing information directly\n')
 
 
 def test_transport_activity(current_time):
@@ -35,18 +37,26 @@ def random_refresh():
 
 rs = threading.Thread(target=random_refresh)
 rs.start()
-
-if display == 'Y':
-    displayer = Displayer(sim, (0, sim.size[0]), (0, sim.size[1]))
+displayer = Displayer(sim, (0, sim.size[0]), (0, sim.size[1]))
+if mode == 'D':
     while sim.current_day < 5:
         sim.progress()
         sim.print_progress_info()
         displayer.refresh()
-        displayer.display()
+        Displayer.display()
     stop = True
+elif mode == 'R':
+    path = input('please enter the path to save the video')
+
+    # noinspection PyUnusedLocal
+    def task(t):
+        sim.progress()
+        displayer.refresh()
+        return mplfig_to_npimage(displayer.figure)
+
+    animation = VideoClip(task, duration=252)
+    animation.write_videofile(path, fps=20)
 else:
     while sim.current_day < 5:
         sim.progress()
         sim.print_progress_info()
-
-

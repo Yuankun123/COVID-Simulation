@@ -291,6 +291,7 @@ class Simulation(Vcity, Crowd, Virus):
                          risk=risk)
         self.initiate_individuals()
 
+        # TODO add record
         self.infected_record = []
         self.transporting_record = []
         self.srr_pop_record = []

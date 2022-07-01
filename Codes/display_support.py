@@ -26,5 +26,3 @@ class Displayer(Dis):
         axes.scatter(x=[indiv.pos[0] for indiv in target.infected_individuals],
                      y=[indiv.pos[1] for indiv in target.infected_individuals],
                      marker='o', color='red')
-
-

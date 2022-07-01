@@ -1,3 +1,5 @@
+import sys
+sys.path.append('C:\\Users\\Kunko\\Documents\\Github\\COVID-Simulation')
 from Codes.vcity.geography_layer import *
 from Codes.vcity.elements import *
 from Codes.vcity.compound import Vcity

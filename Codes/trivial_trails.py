@@ -3,7 +3,7 @@ import numpy as np
 from moviepy.editor import VideoClip
 from moviepy.video.io.bindings import mplfig_to_npimage
 
-x = np.linspace(-2, 2, 200)
+'''x = np.linspace(-2, 2, 200)
 
 duration = 2
 
@@ -25,4 +25,4 @@ def make_frame(t):
 
 animation = VideoClip(make_frame, duration=duration)
 animation.write_videofile('C:\\Users\\Kunko\\Desktop\\trail.mp4', fps=20)
-print(i)
+'''

@@ -247,7 +247,7 @@ class Crowd:
             individual.drift()
 
         transport_num = int(self.transport_activity(current_time) * self.population)
-        while len(self.transporting_individuals) < transport_num - len(self.transporting_individuals):
+        while len(self.transporting_individuals) < transport_num:
             random.seed(random.seed(time.perf_counter()))
             new_indiv = random.choice(self.drifting_individuals)
             self.transporting_individuals.append(new_indiv)

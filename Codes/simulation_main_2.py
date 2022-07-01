@@ -13,9 +13,9 @@ mode = input('\'D\' for displaying\n\'R\'for recording\n\'P\'for printing inform
 
 def test_transport_activity(current_time):
     if 6 * TIME_CONSTANT < current_time <= 8 * TIME_CONSTANT:
-        return (math.cos(1.5 * (current_time / TIME_CONSTANT - 8)) + 1) / 10 + 0.1
+        return (math.cos(1.5 * (current_time / TIME_CONSTANT - 8)) + 1) / 10
     else:
-        return (math.cos(0.75 * (current_time / TIME_CONSTANT - 8)) + 1) / 10 + 0.1
+        return (math.cos(0.75 * (current_time / TIME_CONSTANT - 8)) + 1) / 10
 
 
 sim = Simulation(time_period=(6 * TIME_CONSTANT, 20 * TIME_CONSTANT), population=300, initial_infected=20,
@@ -44,7 +44,6 @@ if mode == 'D':
         sim.print_progress_info()
         displayer.refresh()
         Displayer.display()
-    stop = True
 elif mode == 'R':
     path = input('please enter the path to save the video')
 
@@ -60,3 +59,4 @@ else:
     while sim.current_day < 5:
         sim.progress()
         sim.print_progress_info()
+stop = True

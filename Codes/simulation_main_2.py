@@ -18,7 +18,7 @@ def test_transport_activity(current_time):
         return (math.cos(0.75 * (current_time / TIME_CONSTANT - 8)) + 1) / 10
 
 
-sim = Simulation(time_period=(6 * TIME_CONSTANT, 20 * TIME_CONSTANT), population=300, initial_infected=20,
+sim = Simulation(time_period=(6 * TIME_CONSTANT, 20 * TIME_CONSTANT), population=1000, initial_infected=20,
                  step_length=5, drift_sigma=3, transport_activity=test_transport_activity,
                  infection_radius=1.8, risk=0.01)
 

@@ -6,7 +6,7 @@ __all__ = ['Compound', 'Row', 'Trd', 'Rlt', 'Vcity']
 
 
 class Compound(GeoDistrict):
-    """The base class of elements. Elements are special geo-districts that share a same constructor"""
+    """The base class of compounds. Compounds are special geo-districts that share a same constructor"""
     def __init__(self, refer_pos, **kwargs):
         super().__init__(**kwargs)
         self.refer_x, self.refer_y = refer_pos
